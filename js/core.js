@@ -3,7 +3,7 @@ import * as D from './data.js';
 
 export const S = {
   customers: [], actions: [], logs: [], files: [], sizes: [], layouts: [], quotes: [],
-  pricebook: [], partners: [], docs: [], feedback: [], settings: [], profiles: [],
+  pricebook: [], partners: [], docs: [], feedback: [], settings: [], profiles: [], payments: [],
   me: null, role: 'sales', demo: false,
 };
 

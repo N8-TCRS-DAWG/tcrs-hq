@@ -344,7 +344,9 @@ function moneyTab(el, c) {
   const paid = c.paid || {};
   const rv = revisionInfo(c);
   const refs = q ? referralLines(q) : [];
-  const isAppl = (c.products || []).includes('Appliances') && (c.products || []).length === 1;
+  const pays = S.payments.filter((p) => p.customer_id === c.id && p.status === 'applied').sort((a, b) => (a.paid_date || '').localeCompare(b.paid_date || ''));
+  const otherAmt = paid.other != null ? n(paid.other) : (paid.qb != null ? 0 : n(paid.amount));
+  const owedTotal = t && t.price ? t.total : (c.est_price || 0);
   el.innerHTML = `<div class="two"><div style="display:flex;flex-direction:column;gap:14px;min-width:0">
     <section class="panel"><h3>Dates</h3><div class="fields" style="margin-top:8px">
       ${field('Measure / site visit', 'measure_date', c.measure_date, 'date')}${field('Delivery', 'delivery_date', c.delivery_date, 'date')}${field('Installation', 'install_date', c.install_date, 'date')}
@@ -363,18 +365,16 @@ function moneyTab(el, c) {
       <div class="row"><span>Fees paid:</span><input type="number" id="rPaid" min="0" value="${c.data?.revisionFeesPaid || 0}" style="width:70px"><span class="small muted">${rv.due ? `<b style="color:var(--red)">${money0(rv.dueAmount)} still due</b>` : 'Nothing due'}</span></div>
     </section></div>
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
-    <section class="panel"><h3>Payment — the finish line 🏁</h3>
-      <p class="small muted" style="margin:4px 0 8px">Total received so far (deposits + materials + final). Update it each time money lands in ${isAppl ? 'Clover (appliances)' : 'QuickBooks'}; HQ doesn't read either yet.</p>
-      ${c.data?.paidUnknown && !paid.amount ? '<div class="pill st-red" style="margin-bottom:8px">A payment was mentioned but the amount is missing</div>' : ''}
-      <div class="fields">
-        <label class="field"><span class="lbl">Received so far ($)</span><input type="text" id="pAmt" value="${esc(paid.amount ?? '')}" inputmode="decimal" placeholder="${t ? t.total : ''}"></label>
-        <label class="field"><span class="lbl">Through</span><select id="pHow">${['', 'QuickBooks', 'Clover', 'Check', 'Cash', 'Other'].map((m) => `<option ${paid.method === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
-        <label class="field"><span class="lbl">Date</span><input type="date" id="pAt" value="${esc((paid.at || '').slice(0, 10))}"></label>
-        <label class="field"><span class="lbl">Invoice / ref #</span><input type="text" id="pRef" value="${esc(paid.ref || '')}"></label>
+    <section class="panel"><h3>Payments received — the finish line 🏁</h3>
+      ${c.data?.paidUnknown && !paid.amount ? '<div class="pill st-red" style="margin:6px 0">A payment was mentioned but the amount is missing</div>' : ''}
+      <div class="lbl" style="margin-top:6px">From QuickBooks (automatic)</div>
+      ${pays.length ? `<table class="simple">${pays.map((p) => `<tr><td>${fmtDate(p.paid_date)}</td><td>Invoice ${esc(p.invoice_no || '?')}</td><td class="small muted">${esc(p.method || '')}</td><td class="n"><b>${money(Number(p.amount))}</b></td>${canWrite() ? `<td><button class="btn ghost sm" type="button" data-unpay="${p.id}" title="Not this customer's payment">Remove</button></td>` : ''}</tr>`).join('')}</table>` : '<p class="small muted" style="margin:4px 0">None yet. QuickBooks "Payment received" emails sync every 10 minutes.</p>'}
+      <div class="fields" style="margin-top:10px">
+        <label class="field"><span class="lbl">Other payments ($): cash, check, Clover</span><input type="text" id="pOther" value="${esc(otherAmt || '')}" inputmode="decimal" placeholder="0"></label>
         ${t && t.price ? '' : `<label class="field"><span class="lbl">Job value ($, PRICE)</span><input type="text" id="pJob" value="${esc(c.est_price ?? '')}" inputmode="decimal" placeholder="Total the customer pays"></label>`}
       </div>
-      ${t ? `<p class="small" style="margin-top:8px">Quote total ${money(t.total)}${paid.amount ? ` · received ${money(n(paid.amount))} · <b>${n(paid.amount) >= t.total - 0.01 ? 'paid in full' : money(t.total - n(paid.amount)) + ' outstanding'}</b>` : ''}</p>` : ''}
-      <button class="btn primary" type="button" id="pSave" style="margin-top:8px">Save payment</button>
+      <p class="small" style="margin:8px 0 0">Received so far: <b>${money(n(paid.amount) || 0)}</b>${owedTotal ? ` of ${money(owedTotal)} · <b>${(n(paid.amount) || 0) >= owedTotal - 0.01 ? 'paid in full' : money(owedTotal - (n(paid.amount) || 0)) + ' outstanding'}</b>` : ''}</p>
+      <button class="btn primary" type="button" id="pSave" style="margin-top:8px">Save</button>
     </section>
     <section class="panel"><h3>Referral fees owed to TCRS</h3>
       <p class="small muted" style="margin:4px 0 8px">From "Referral" lines on the quote: the partner bills the customer directly and pays TCRS a fee.</p>
@@ -392,16 +392,23 @@ function moneyTab(el, c) {
   ['#dAmt', '#dAt', '#dHow', '#dWaive'].forEach((s) => ($(s, el).onchange = async () => { await saveDep(); if (s === '#dAt' && $('#dAt', el).value) logEvent(c.id, 'system', 'Design deposit paid'); }));
   $('#rPaid', el).onchange = (e) => patchCustomer(c, { data: { ...(c.data || {}), revisionFeesPaid: Math.max(0, parseInt(e.target.value, 10) || 0) } });
   $('#pSave', el).onclick = async () => {
-    const amount = n($('#pAmt', el).value), method = $('#pHow', el).value;
-    if (!amount || !method) return toast('Enter the amount and where it was paid.');
+    const other = n($('#pOther', el).value) || 0;
     const jobV = $('#pJob', el) ? n($('#pJob', el).value) : null;
-    await patchCustomer(c, { paid: { amount, method, at: $('#pAt', el).value || todayISO(), ref: $('#pRef', el).value.trim() }, ...(jobV ? { est_price: jobV } : {}), data: { ...(c.data || {}), paidUnknown: false } });
-    await logEvent(c.id, 'system', `Payment recorded: ${money(amount)} received so far via ${method}`);
-    toast('Payment saved.');
+    const prev = c.paid || {};
+    await patchCustomer(c, { paid: { ...prev, other, amount: (n(prev.qb) || 0) + other }, ...(jobV ? { est_price: jobV } : {}) });
+    await D.rpc('hq_recalc_paid', { cid: c.id });
+    if (other !== (otherAmt || 0)) await logEvent(c.id, 'system', `Other payments set to ${money(other)}`);
+    toast('Saved.');
+    const got = (n(prev.qb) || 0) + other;
     const owed = t && t.price ? t.total : (jobV || c.est_price || 0);
-    if (c.stage !== 'paid' && owed && amount >= owed - 0.01) modal('<h2>Move to Paid?</h2>', '<p>Payment is recorded. Move this job across the finish line?</p><div class="row"><button class="btn primary" type="button" id="mp">Move to Paid 🏁</button><button class="btn" type="button" id="np">Not yet</button></div>',
+    if (c.stage !== 'paid' && owed && got >= owed - 0.01) modal('<h2>Move to Paid?</h2>', '<p>Paid in full. Move this job across the finish line?</p><div class="row"><button class="btn primary" type="button" id="mp">Move to Paid 🏁</button><button class="btn" type="button" id="np">Not yet</button></div>',
       (box, close) => { $('#mp', box).onclick = () => { close(); moveStage(c, 'paid'); }; $('#np', box).onclick = close; });
   };
+  $$('[data-unpay]', el).forEach((b) => (b.onclick = async () => {
+    await D.update('payments', b.dataset.unpay, { customer_id: null, status: 'review', match_note: 'removed from ' + (c.name || 'customer') });
+    await D.rpc('hq_recalc_paid', { cid: c.id });
+    toast('Moved back to the payments tray.');
+  }));
   $$('.fst', el).forEach((s) => (s.onchange = async () => {
     const lid = s.closest('tr').dataset.lid;
     const nq = structuredClone(q);

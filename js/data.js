@@ -1,5 +1,5 @@
 // Data layer: Supabase when configured, otherwise a demo store in this browser.
-export const TABLES = ['customers','actions','logs','files','sizes','layouts','quotes','pricebook','partners','docs','feedback','settings','profiles'];
+export const TABLES = ['customers','actions','logs','files','sizes','layouts','quotes','pricebook','partners','docs','feedback','settings','profiles','payments'];
 
 const cfg = window.HQ_CONFIG || {};
 export const isDemo = !(cfg.SUPABASE_URL && cfg.SUPABASE_KEY);
@@ -101,6 +101,24 @@ export async function upsert(table, row) {
   if (error) throw new Error(`${table}: ${error.message}`);
   emit(table);
   return data;
+}
+
+export async function rpc(fn, args) {
+  if (isDemo) { if (fn === 'hq_recalc_paid') demoRecalc(args.cid); return null; }
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw new Error(error.message);
+  emit('customers'); emit('actions');
+  return data;
+}
+function demoRecalc(cid) {
+  const c = demo.customers.find((x) => x.id === cid); if (!c) return;
+  const ps = demo.payments.filter((p) => p.customer_id === cid && p.status === 'applied');
+  const qb = ps.reduce((a, p) => a + Number(p.amount), 0);
+  const prev = c.paid || {};
+  const other = prev.other != null ? Number(prev.other) : (prev.qb != null ? 0 : Number(prev.amount) || 0);
+  c.paid = qb + other > 0 ? { amount: qb + other, qb, other, method: qb && other ? 'QuickBooks + other' : qb ? 'QuickBooks' : prev.method, at: ps.map((p) => p.paid_date).sort().pop() || prev.at, ref: [...new Set(ps.map((p) => p.invoice_no))].join(', ') || prev.ref } : null;
+  if (c.paid) { c.data = { ...(c.data || {}) }; delete c.data.paidUnknown; }
+  demoSave(); emit('customers');
 }
 
 export async function remove(table, id) {

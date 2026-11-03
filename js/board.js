@@ -1,5 +1,6 @@
 // Board (kanban) and Race (glance / office TV).
-import { S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines } from './core.js';
+import * as D from './data.js';
+import { S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js';
 import { moveStage } from './customer.js';
 import { openDrop } from './drop.js';
 
@@ -63,6 +64,7 @@ export function renderBoard(v) {
     <input type="search" id="bq" placeholder="Search name, city, product" value="${esc(F.q)}" aria-label="Search leads">
     <label class="small row" style="gap:4px"><input type="checkbox" id="blost" ${F.lost ? 'checked' : ''}> Show lost</label>
     <span class="grow"></span>
+    ${S.payments.filter((p) => p.status === 'review').length && canWrite() ? `<button class="btn" type="button" id="payTray" style="border-color:var(--amber);background:var(--amber-bg)">💳 ${S.payments.filter((p) => p.status === 'review').length} QuickBooks payment${S.payments.filter((p) => p.status === 'review').length > 1 ? 's' : ''} to match</button>` : ''}
     <span class="small muted">Open pipeline <b class="num">${money0(openVal)}</b> · Collected <b class="num" style="color:var(--green)">${money0(collected)}</b>${feesOwed ? ` · <b>${feesOwed}</b> referral fee${feesOwed > 1 ? 's' : ''} to collect` : ''}</span>
     ${canWrite() ? '<button class="btn" type="button" id="newLead">+ New lead by hand</button>' : ''}
   </div>
@@ -87,6 +89,7 @@ export function renderBoard(v) {
   bq.oninput = () => { F.q = bq.value; saveF(); clearTimeout(bq._t); bq._t = setTimeout(() => { renderBoard(v); const x = $('#bq'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); }, 200); };
   $('#blost', v).onchange = (e) => { F.lost = e.target.checked; saveF(); renderBoard(v); };
   $('#newLead', v)?.addEventListener('click', () => openDrop({ manual: true }));
+  $('#payTray', v)?.addEventListener('click', openPayTray);
   $$('.card', v).forEach((el) => {
     el.onclick = () => (location.hash = 'c-' + el.dataset.id);
     el.onkeydown = (e) => { if (e.key === 'Enter') location.hash = 'c-' + el.dataset.id; };
@@ -101,6 +104,33 @@ export function renderBoard(v) {
       const c = S.customers.find((x) => x.id === e.dataTransfer.getData('text/plain'));
       if (c && c.stage !== col.dataset.stage) moveStage(c, col.dataset.stage);
     };
+  });
+}
+
+function openPayTray() {
+  const list = S.payments.filter((p) => p.status === 'review').sort((a, b) => (b.paid_date || '').localeCompare(a.paid_date || ''));
+  const opts = [...S.customers].filter((c) => !c.lost).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const b = document.createElement('div');
+  b.className = 'sheet-bg top-modal'; b.style.zIndex = 60;
+  b.innerHTML = `<div class="sheet narrow"><div class="sheet-h"><h2>QuickBooks payments to match</h2><button class="x" type="button" aria-label="Close">×</button></div><div class="sheet-b">
+    <p class="small muted">These came from QuickBooks "Payment received" emails but didn't match exactly one customer by email or name. Pick the customer, or ignore ones that aren't TCRS jobs.</p>
+    ${list.map((p) => `<div class="check-sec" data-pid="${p.id}"><div class="row"><b>${money0(Number(p.amount))}</b><span>${esc(p.customer_name || '?')}</span><span class="small muted">${esc(p.customer_email || '')} · invoice ${esc(p.invoice_no || '?')} · ${fmtDate(p.paid_date)} · ${esc(p.match_note || '')}</span></div>
+      <div class="row"><select class="grow" data-cust><option value="">Pick the customer…</option>${opts.map((c) => `<option value="${c.id}">${esc(c.name || 'No name')}${c.city ? ' · ' + esc(c.city) : ''}</option>`).join('')}</select><button class="btn primary sm" type="button" data-apply>Apply</button><button class="btn sm" type="button" data-ignore>Ignore</button></div></div>`).join('') || '<p>All matched.</p>'}
+  </div></div>`;
+  document.body.appendChild(b);
+  b.querySelector('.x').onclick = () => b.remove();
+  b.querySelectorAll('[data-pid]').forEach((row) => {
+    const pid = row.dataset.pid;
+    row.querySelector('[data-apply]').onclick = async () => {
+      const cid = row.querySelector('[data-cust]').value;
+      if (!cid) return toast('Pick the customer first.');
+      const p = S.payments.find((x) => x.id === pid);
+      await D.update('payments', pid, { customer_id: cid, status: 'applied', match_note: 'matched by hand' });
+      await D.rpc('hq_recalc_paid', { cid });
+      await D.insert('logs', { customer_id: cid, kind: 'system', at: new Date().toISOString(), summary: `QuickBooks payment ${money0(Number(p.amount))} applied by hand (invoice ${p.invoice_no || '?'})`, by: S.me?.id });
+      row.remove(); toast('Payment applied.');
+    };
+    row.querySelector('[data-ignore]').onclick = async () => { await D.update('payments', pid, { status: 'ignored' }); row.remove(); toast('Ignored.'); };
   });
 }
 
