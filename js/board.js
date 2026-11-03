@@ -11,9 +11,12 @@ const PROD_SHORT = { 'Cabinets': 'Cab', 'Countertops': 'Tops', 'Flooring': 'Floo
 
 export function value(c) {
   const q = custQuote(c.id);
-  if (q) { const t = quoteCalc(q, c); if (t.price) return t.total; }
-  return c.est_price || c.budget || 0;
+  let v = 0;
+  if (q) { const t = quoteCalc(q, c); if (t.price) v = t.total; }
+  if (!v) v = c.est_price || c.budget || 0;
+  return Math.max(v, received(c));
 }
+export const received = (c) => Number(c.paid?.amount) || 0;
 
 function visible() {
   const q = F.q.trim().toLowerCase();
@@ -38,6 +41,7 @@ function card(c) {
     <div class="meta">
       ${day != null ? `<span>Day ${day}</span>` : ''}
       ${v ? `<span>${money0(v)}</span>` : ''}
+      ${received(c) ? `<span class="got">Paid ${money0(received(c))}</span>` : (c.data?.paidUnknown ? '<span class="warn">Paid: amount?</span>' : '')}
       ${rv.used ? `<span class="${rv.over ? 'warn' : ''}">Rev ${rv.used}/${rv.allowed}</span>` : ''}
       ${dates.map((d) => `<span class="${d.warn ? 'warn' : ''}">${esc(d.text)}</span>`).join('')}
       ${c.lost ? '<span class="warn">Lost</span>' : ''}
@@ -50,6 +54,7 @@ export function renderBoard(v) {
   const counts = { red: 0, yellow: 0, green: 0 };
   S.customers.filter((c) => !c.lost && c.stage !== 'paid').forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
   const openVal = S.customers.filter((c) => !c.lost && c.stage !== 'paid').reduce((a, c) => a + value(c), 0);
+  const collected = S.customers.filter((c) => !c.lost).reduce((a, c) => a + received(c), 0);
   const feesOwed = S.quotes.filter((q) => q.status === 'accepted').reduce((a, q) => a + referralLines(q).filter((l) => l.feeStatus !== 'received').length, 0);
 
   v.innerHTML = `
@@ -58,24 +63,26 @@ export function renderBoard(v) {
     <input type="search" id="bq" placeholder="Search name, city, product" value="${esc(F.q)}" aria-label="Search leads">
     <label class="small row" style="gap:4px"><input type="checkbox" id="blost" ${F.lost ? 'checked' : ''}> Show lost</label>
     <span class="grow"></span>
-    <span class="small muted">Open pipeline <b class="num">${money0(openVal)}</b>${feesOwed ? ` · <b>${feesOwed}</b> referral fee${feesOwed > 1 ? 's' : ''} to collect` : ''}</span>
+    <span class="small muted">Open pipeline <b class="num">${money0(openVal)}</b> · Collected <b class="num" style="color:var(--green)">${money0(collected)}</b>${feesOwed ? ` · <b>${feesOwed}</b> referral fee${feesOwed > 1 ? 's' : ''} to collect` : ''}</span>
     ${canWrite() ? '<button class="btn" type="button" id="newLead">+ New lead by hand</button>' : ''}
   </div>
+  ${F.st ? focusPanel(F.st) : ''}
   <p class="legend">Color = whose move it is. <b style="color:var(--red)">Red</b>: we owe a step (or no step is set). <b style="color:var(--amber)">Yellow</b>: waiting on a supplier or contractor. <b style="color:var(--green)">Green</b>: waiting on the customer. The number is the lead score (0–100). Drag a card to move it.</p>
   <div class="board-wrap"><div class="board">
     ${STAGES.map((s, i) => {
       const cs = list.filter((c) => (c.stage || 'new') === s.k).sort(sortCards);
       const sum = cs.reduce((a, c) => a + value(c), 0);
-      if (!cs.length && i !== STAGES.length - 1) return `<section class="col slim" data-stage="${s.k}" aria-label="${esc(s.label)}, empty" title="${esc(s.label)}: empty. Drop a card here."><span class="slim-l">${esc(s.label)}</span><span class="num">0</span></section>`;
-      return `<section class="col ${i === STAGES.length - 1 ? 'finish' : ''}" data-stage="${s.k}" aria-label="${esc(s.label)}">
+      return `<section class="col ${i === STAGES.length - 1 ? 'finish' : ''} ${cs.length ? '' : 'empty'}" data-stage="${s.k}" aria-label="${esc(s.label)}">
         <div class="col-h"><h3>${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.label)}</h3><span class="num">${cs.length}${sum ? ' · ' + money0(sum) : ''}</span></div>
-        ${cs.map(card).join('') || '<div class="small muted" style="padding:6px 4px">—</div>'}
+        ${cs.map(card).join('') || '<div class="none">Nothing here</div>'}
       </section>`;
     }).join('')}
   </div></div>
   ${S.customers.length ? '' : `<div class="empty" style="margin-top:14px"><h3>No leads yet</h3><p>Press <b>Drop</b> to paste an email, a call transcript, photos or a layout. Claude builds the customer card for you to check.</p></div>`}`;
 
   $$('.stat', v).forEach((b) => (b.onclick = () => { F.st = F.st === b.dataset.st ? null : b.dataset.st; saveF(); renderBoard(v); }));
+  $('#fClear', v)?.addEventListener('click', () => { F.st = null; saveF(); renderBoard(v); });
+  $$('.focus-row', v).forEach((r) => (r.onclick = () => (location.hash = 'c-' + r.dataset.id)));
   const bq = $('#bq', v);
   bq.oninput = () => { F.q = bq.value; saveF(); clearTimeout(bq._t); bq._t = setTimeout(() => { renderBoard(v); const x = $('#bq'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); }, 200); };
   $('#blost', v).onchange = (e) => { F.lost = e.target.checked; saveF(); renderBoard(v); };
@@ -95,6 +102,23 @@ export function renderBoard(v) {
       if (c && c.stage !== col.dataset.stage) moveStage(c, col.dataset.stage);
     };
   });
+}
+
+const WAIT = { red: ['us'], yellow: ['supplier', 'contractor'], green: ['customer'] };
+function focusPanel(k) {
+  const t = todayISO();
+  const leads = S.customers.filter((c) => !c.lost && c.stage !== 'paid' && status(c).k === k);
+  const rows = [];
+  leads.forEach((c) => {
+    const acts = openActions(c.id).filter((a) => WAIT[k].includes(a.waiting_on));
+    if (!acts.length) rows.push({ c, title: k === 'red' ? 'No next step set — open and add one' : status(c).why, due: null });
+    acts.forEach((a) => rows.push({ c, title: a.title, due: a.due, who: a.waiting_on }));
+  });
+  rows.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
+  return `<section class="focus-panel st-${k}" aria-label="${esc(STATUS_TEXT[k])}">
+    <div class="fh"><span class="dot"></span><h3>${esc(STATUS_TEXT[k])}: ${rows.length} step${rows.length === 1 ? '' : 's'} on ${leads.length} lead${leads.length === 1 ? '' : 's'}</h3><span class="grow"></span><button class="btn sm" type="button" id="fClear">Show all leads</button></div>
+    ${rows.map((r) => `<div class="focus-row" data-id="${r.c.id}" tabindex="0"><span class="due ${r.due && r.due < t ? 'late' : ''}">${r.due ? (r.due < t ? 'Late · ' : '') + fmtDate(r.due) : 'No date'}</span><span>${esc(r.title)}${r.who && r.who !== 'us' && r.who !== 'customer' ? ` <span class="chip">${esc(r.who)}</span>` : ''}</span><span class="who">${esc(r.c.name || 'No name')}</span></div>`).join('') || '<p class="small muted">Nothing here. Nice.</p>'}
+  </section>`;
 }
 
 function sortCards(a, b) {

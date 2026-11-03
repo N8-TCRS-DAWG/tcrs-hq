@@ -57,7 +57,7 @@ function draw() {
     <div class="sheet-b">
       <nav class="stepper" aria-label="Stage">${STAGES.map((s, i) => `<button type="button" class="step ${i < si ? 'done' : i === si ? 'cur' : ''}" data-stage="${s.k}" ${canWrite() ? '' : 'disabled'}><span class="b">${i < si ? '✓' : i + 1}</span><span class="s">${esc(s.short)}</span></button>`).join('')}</nav>
       ${nextCard(c, st)}
-      <div class="tabs" role="tablist">${[['overview', 'Overview'], ['files', 'Files & sizes'], ['layout', 'Layout'], ['quote', 'Estimate → Quote'], ['money', 'Money & dates']].map(([k, l]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <div class="tabs" role="tablist">${tabSubs(c).map(([k, l, sub]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}"><span>${l}</span><span class="ts">${esc(sub)}</span></button>`).join('')}</div>
       <div id="tabBody"></div>
     </div></div>`;
   $('#cClose', sheet).onclick = () => closeCustomer();
@@ -72,6 +72,23 @@ function draw() {
   else if (tab === 'quote') renderQuote(body, c);
   else if (tab === 'money') moneyTab(body, c);
   sheet.scrollTop = scrollY;
+}
+
+function tabSubs(c) {
+  const files = custFiles(c.id).length, sizes = custSizes(c.id).length;
+  const lay = S.layouts.filter((l) => l.customer_id === c.id).sort((a, b) => b.version - a.version)[0];
+  const rv = revisionInfo(c);
+  const q = custQuote(c.id);
+  const t = q ? quoteCalc(q, c) : null;
+  const got = Number(c.paid?.amount) || 0;
+  const nextDate = [['Measure', c.measure_date], ['Delivery', c.delivery_date], ['Install', c.install_date]].filter(([, d]) => d && d >= todayISO()).sort((a, b) => a[1].localeCompare(b[1]))[0];
+  return [
+    ['overview', 'Overview', 'Summary · contact · history'],
+    ['files', 'Files & sizes', `${files} file${files === 1 ? '' : 's'} · ${sizes} size${sizes === 1 ? '' : 's'}`],
+    ['layout', 'Layout', lay ? `v${lay.version} · rev ${rv.used}/${rv.allowed}` : 'Upload or draw'],
+    ['quote', 'Estimate → Quote', q ? `${q.mode === 'quote' ? 'Quote' : 'Estimate'} ${q.status} · ${money0(t.total)}` : 'Not started'],
+    ['money', 'Money & dates', `${got ? 'Paid ' + money0(got) : c.data?.paidUnknown ? 'Paid: amount?' : 'Nothing paid'}${nextDate ? ' · ' + nextDate[0] + ' ' + fmtDate(nextDate[1]) : ''}`],
+  ];
 }
 
 /* ───────── Next card: the one thing that matters ───────── */
@@ -347,12 +364,14 @@ function moneyTab(el, c) {
     </section></div>
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
     <section class="panel"><h3>Payment — the finish line 🏁</h3>
-      <p class="small muted" style="margin:4px 0 8px">Record it when the money lands in ${isAppl ? 'Clover (appliances)' : 'QuickBooks'}. HQ doesn't read QuickBooks or Clover yet, so type it in.</p>
+      <p class="small muted" style="margin:4px 0 8px">Total received so far (deposits + materials + final). Update it each time money lands in ${isAppl ? 'Clover (appliances)' : 'QuickBooks'}; HQ doesn't read either yet.</p>
+      ${c.data?.paidUnknown && !paid.amount ? '<div class="pill st-red" style="margin-bottom:8px">A payment was mentioned but the amount is missing</div>' : ''}
       <div class="fields">
-        <label class="field"><span class="lbl">Amount received</span><input type="text" id="pAmt" value="${esc(paid.amount ?? '')}" inputmode="decimal" placeholder="${t ? t.total : ''}"></label>
+        <label class="field"><span class="lbl">Received so far ($)</span><input type="text" id="pAmt" value="${esc(paid.amount ?? '')}" inputmode="decimal" placeholder="${t ? t.total : ''}"></label>
         <label class="field"><span class="lbl">Through</span><select id="pHow">${['', 'QuickBooks', 'Clover', 'Check', 'Cash', 'Other'].map((m) => `<option ${paid.method === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
         <label class="field"><span class="lbl">Date</span><input type="date" id="pAt" value="${esc((paid.at || '').slice(0, 10))}"></label>
         <label class="field"><span class="lbl">Invoice / ref #</span><input type="text" id="pRef" value="${esc(paid.ref || '')}"></label>
+        ${t && t.price ? '' : `<label class="field"><span class="lbl">Job value ($, PRICE)</span><input type="text" id="pJob" value="${esc(c.est_price ?? '')}" inputmode="decimal" placeholder="Total the customer pays"></label>`}
       </div>
       ${t ? `<p class="small" style="margin-top:8px">Quote total ${money(t.total)}${paid.amount ? ` · received ${money(n(paid.amount))} · <b>${n(paid.amount) >= t.total - 0.01 ? 'paid in full' : money(t.total - n(paid.amount)) + ' outstanding'}</b>` : ''}</p>` : ''}
       <button class="btn primary" type="button" id="pSave" style="margin-top:8px">Save payment</button>
@@ -375,9 +394,12 @@ function moneyTab(el, c) {
   $('#pSave', el).onclick = async () => {
     const amount = n($('#pAmt', el).value), method = $('#pHow', el).value;
     if (!amount || !method) return toast('Enter the amount and where it was paid.');
-    await patchCustomer(c, { paid: { amount, method, at: $('#pAt', el).value || todayISO(), ref: $('#pRef', el).value.trim() } });
-    await logEvent(c.id, 'system', `Payment recorded: ${money(amount)} via ${method}`);
-    if (c.stage !== 'paid') modal('<h2>Move to Paid?</h2>', '<p>Payment is recorded. Move this job across the finish line?</p><div class="row"><button class="btn primary" type="button" id="mp">Move to Paid 🏁</button><button class="btn" type="button" id="np">Not yet</button></div>',
+    const jobV = $('#pJob', el) ? n($('#pJob', el).value) : null;
+    await patchCustomer(c, { paid: { amount, method, at: $('#pAt', el).value || todayISO(), ref: $('#pRef', el).value.trim() }, ...(jobV ? { est_price: jobV } : {}), data: { ...(c.data || {}), paidUnknown: false } });
+    await logEvent(c.id, 'system', `Payment recorded: ${money(amount)} received so far via ${method}`);
+    toast('Payment saved.');
+    const owed = t && t.price ? t.total : (jobV || c.est_price || 0);
+    if (c.stage !== 'paid' && owed && amount >= owed - 0.01) modal('<h2>Move to Paid?</h2>', '<p>Payment is recorded. Move this job across the finish line?</p><div class="row"><button class="btn primary" type="button" id="mp">Move to Paid 🏁</button><button class="btn" type="button" id="np">Not yet</button></div>',
       (box, close) => { $('#mp', box).onclick = () => { close(); moveStage(c, 'paid'); }; $('#np', box).onclick = close; });
   };
   $$('.fst', el).forEach((s) => (s.onchange = async () => {

@@ -1,6 +1,6 @@
 // The Drop: everything enters HQ here. Read → Check → Save.
 import * as D from './data.js';
-import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js';
+import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, money0, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js';
 import { bumpRevision } from './customer.js';
 import { planFromSpec } from './layout.js';
 import { addLinesToQuote } from './quote.js';
@@ -132,13 +132,13 @@ function drawFiles() {
 }
 
 /* ───────── reading ───────── */
-async function toBase64(blob) {
+export async function toBase64(blob) {
   const buf = await blob.arrayBuffer();
   let s = ''; const b = new Uint8Array(buf);
   for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
   return btoa(s);
 }
-async function shrinkImage(file, max = 1568) {
+export async function shrinkImage(file, max = 1568) {
   try {
     const bmp = await createImageBitmap(file);
     const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
@@ -168,12 +168,17 @@ Hard rules:
 - tldr: 2–4 plain sentences, the whole project and where it stands now, rewritten to include the new information.
 - actions: only real next steps. "whose" is who must act next: us (TCRS), supplier, contractor or customer.
 - revision.requested = true only when the customer asks TCRS to change a layout TCRS already made.
+- payment: if the drop says the customer paid anything (deposit, materials, in full), set payment.status. Put the amount ONLY if a dollar figure for that payment is written; otherwise amount null and say so in payment.note. Never guess an amount.
+- job_value: the agreed or quoted total PRICE to the customer if a figure is stated (quote total, invoice total). Not the budget.
+- dates: measure_date, delivery_date, install_date as YYYY-MM-DD when stated or clearly scheduled. For a range ("11/4 or 11/5") use the first day and mention the range in warnings.
 - layout: only when wall lengths or cabinet positions are actually given. Walls in order, each turning 90° clockwise.
 - lines: only from a supplier or contractor quote in the drop. deal = "resell" when TCRS buys and resells; "referral" when the contractor will bill the customer directly and pay TCRS a referral fee.
 
 JSON shape:
 {"match":{"customerId":null,"confidence":"high|medium|low","why":""},
- "customer":{"name":null,"phone":null,"email":null,"address":null,"city":null,"zip":null,"source":null,"ctype":"Homeowner|Contractor|Flipper|Landlord|Designer|null","budget":null,"timeline":null,"products":[],"services":[],"finishes":null,"first_contact":null},
+ "customer":{"name":null,"phone":null,"email":null,"address":null,"city":null,"zip":null,"source":null,"ctype":"Homeowner|Contractor|Flipper|Landlord|Designer|null","budget":null,"timeline":null,"products":[],"services":[],"finishes":null,"first_contact":null,"measure_date":null,"delivery_date":null,"install_date":null},
+ "payment":{"status":"none|deposit|partial|full","amount":null,"method":"QuickBooks|Clover|Check|Cash|Card|Other|null","date":null,"note":""},
+ "job_value":null,
  "tldr":"",
  "log":[{"kind":"email|call|text|note|visit","date":"YYYY-MM-DD","summary":"one line"}],
  "actions":[{"title":"","due":"YYYY-MM-DD|null","whose":"us|supplier|contractor|customer"}],
@@ -241,7 +246,7 @@ function fallback(target) {
 }
 
 /* ───────── Check screen ───────── */
-const CFIELDS = [['name', 'Name'], ['phone', 'Phone'], ['email', 'Email'], ['address', 'Address'], ['city', 'City'], ['zip', 'ZIP'], ['source', 'Lead source'], ['ctype', 'Customer type'], ['budget', 'Budget'], ['timeline', 'Timeline'], ['finishes', 'Finishes'], ['first_contact', 'First contact']];
+const CFIELDS = [['name', 'Name'], ['phone', 'Phone'], ['email', 'Email'], ['address', 'Address'], ['city', 'City'], ['zip', 'ZIP'], ['source', 'Lead source'], ['ctype', 'Customer type'], ['budget', 'Budget'], ['timeline', 'Timeline'], ['finishes', 'Finishes'], ['first_contact', 'First contact'], ['measure_date', 'Measure date'], ['delivery_date', 'Delivery date'], ['install_date', 'Install date']];
 let fbRating = 0;
 const MOVE = { us: 'Our move', supplier: "Supplier's move", contractor: "Contractor's move", customer: "Customer's move" };
 
@@ -283,6 +288,7 @@ function check(j, target) {
     <div class="check-sec"><div class="hd"><input type="checkbox" id="revOn" ${j.revision?.requested ? 'checked' : ''}><h3>Count a layout revision</h3></div><span class="small muted">${esc(j.revision?.why || 'Tick if the customer asked us to change a layout we made.')}</span></div>
     ${lay ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="layOn" checked><h3>Draw the layout</h3></div><span class="small">${lay.walls.map((w) => `${esc(w.name || '')} ${w.length_in}"`).join(' · ')}${(lay.items || []).length ? ` · ${lay.items.length} cabinets/appliances` : ''}. Saved as a new layout version you can adjust on the Layout tab.</span></div>` : ''}
     ${lines.length ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="linesOn" checked><h3>Add to the estimate (COST lines)</h3></div><div class="tbl-wrap"><table class="simple"><thead><tr><th>Product</th><th>What</th><th>Qty</th><th>Unit</th><th style="color:var(--cost)">COST / unit</th><th>Partner</th><th>Deal</th></tr></thead><tbody>${lines.map((l) => `<tr><td>${esc(l.product)}</td><td>${esc(l.desc)}<div class="small muted">${esc(l.kind)}</div></td><td>${esc(l.qty)}</td><td>${esc(l.unit)}</td><td>${l.cost != null ? '$' + esc(l.cost) : l.list != null ? `list $${esc(l.list)} − ${esc(l.disc || 0)}%` : '—'}</td><td>${esc(l.partner || '')}</td><td>${esc(l.deal || 'resell')}</td></tr>`).join('')}</tbody></table></div><span class="small muted">Prices (what the customer pays) are set on the Estimate tab with your markup.</span></div>` : ''}
+    ${payHTML(j, ex)}
     ${stageOk ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="stOn" checked><h3>Move to "${esc(STAGES[stageIdx(j.stage)].label)}"</h3></div></div>` : ''}
     ${j.conversion?.score ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="convOn" checked><h3>Likely to buy: ${esc(j.conversion.score)}/5</h3></div><span class="small muted">${esc(j.conversion.why || '')}</span></div>` : ''}
     ${(j.questions || []).length ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="qOn" checked><h3>Still missing to quote</h3></div>${j.questions.map((q) => `<div class="small">• ${esc(q)}</div>`).join('')}<span class="small muted">Saved as one "Ask customer" step.</span></div>` : ''}
@@ -294,6 +300,22 @@ function check(j, target) {
   $$('[data-fb]', box).forEach((b) => (b.onclick = () => { fbRating = +b.dataset.fb; $$('[data-fb]', box).forEach((x) => x.classList.toggle('primary', x === b)); }));
   $('#back', box).onclick = () => { $('.sheet', box).classList.add('narrow'); drawDrop(); };
   $('#save', box).onclick = () => save(j, lay, lines);
+}
+
+function payHTML(j, ex) {
+  const p = j.payment || {};
+  const paidNow = Number(ex?.paid?.amount) || 0;
+  const jv = Number(j.job_value) || null;
+  if ((!p.status || p.status === 'none') && !jv) return '';
+  const hasAmt = p.amount != null && p.amount !== '';
+  return `<div class="check-sec" style="border-color:${hasAmt ? 'var(--line)' : 'var(--amber)'}"><div class="hd"><input type="checkbox" id="payOn" checked><h3>Money</h3></div>
+    ${p.status && p.status !== 'none' ? `<div class="crow"><span class="lbl" style="width:110px">Paid</span>
+      <input type="text" id="payAmt" value="${esc(hasAmt ? p.amount : '')}" placeholder="${hasAmt ? '' : 'Amount not in the email: type it'}" inputmode="decimal" style="flex:0 1 220px">
+      <select id="payHow">${['', 'QuickBooks', 'Clover', 'Check', 'Cash', 'Card', 'Other'].map((m) => `<option ${p.method === m ? 'selected' : ''}>${m}</option>`).join('')}</select>
+      <input type="date" id="payAt" value="${esc(p.date || '')}">
+      <span class="small muted">${esc(p.status)}${p.note ? ' · ' + esc(p.note) : ''}${paidNow ? ` · already recorded ${money0(paidNow)}` : ''}</span></div>` : ''}
+    <div class="crow"><span class="lbl" style="width:110px">Job value</span><input type="text" id="jobVal" value="${esc(jv ?? (ex?.est_price ?? ''))}" placeholder="Total PRICE to the customer, if known" inputmode="decimal" style="flex:0 1 220px"><span class="small muted">Counts toward the pipeline</span></div>
+  </div>`;
 }
 
 async function save(j, lay, lines) {
@@ -311,15 +333,26 @@ async function save(j, lay, lines) {
     patch.products = $$('#cProds .chip.on', box).map((b) => b.textContent);
     patch.services = $$('#cServs .chip.on', box).map((b) => b.textContent);
     if ($('#cTldrOn', box).checked) patch.tldr = $('#cTldr', box).value.trim() || null;
+    if ($('#payOn', box)?.checked) {
+      const jv = n($('#jobVal', box)?.value);
+      if (jv) patch.est_price = jv;
+      if ($('#payAmt', box)) {
+        const amt = n($('#payAmt', box).value);
+        if (amt) patch.paid = { amount: amt, method: $('#payHow', box).value || null, at: $('#payAt', box).value || todayISO(), ref: null };
+        patch.__paidUnknown = !amt;
+      }
+    }
     if ($('#convOn', box)?.checked) patch.conversion = Math.min(5, Math.max(1, parseInt(j.conversion.score, 10) || 3));
     const fin = patch.__finishes; delete patch.__finishes;
+    const pu = patch.__paidUnknown; delete patch.__paidUnknown;
+    ['measure_date', 'delivery_date', 'install_date'].forEach((k) => { if (patch[k] && !/^\d{4}-\d{2}-\d{2}$/.test(patch[k])) delete patch[k]; });
     if (patch.first_contact && !/^\d{4}-\d{2}-\d{2}$/.test(patch.first_contact)) delete patch.first_contact;
     if (!c) {
-      c = await D.insert('customers', { name: patch.name || 'New lead', stage: 'new', first_contact: patch.first_contact || todayISO(), data: fin ? { finishes: fin } : {}, revisions: 0, created_by: S.me?.id, ...patch });
+      c = await D.insert('customers', { name: patch.name || 'New lead', stage: 'new', first_contact: patch.first_contact || todayISO(), data: { ...(fin ? { finishes: fin } : {}), ...(pu ? { paidUnknown: true } : {}) }, revisions: 0, created_by: S.me?.id, ...patch });
       S.customers.push(c);
       await logEvent(c.id, 'system', 'Lead created from a drop');
     } else {
-      if (fin) patch.data = { ...(c.data || {}), finishes: fin };
+      if (fin || pu != null) patch.data = { ...(c.data || {}), ...(fin ? { finishes: fin } : {}), ...(pu != null ? { paidUnknown: pu && !c.paid?.amount } : {}) };
       await patchCustomer(c, patch);
     }
     // files
@@ -360,6 +393,7 @@ async function save(j, lay, lines) {
     }
     if ($('#revOn', box)?.checked) await bumpRevision(c, +1, j.revision?.why || 'From a drop');
     if (lines.length && $('#linesOn', box)?.checked) await addLinesToQuote(c, lines);
+    if (pu) await D.insert('actions', { customer_id: c.id, title: 'Enter how much was paid (Money & dates tab)', waiting_on: 'us', due: todayISO(), done: false, owner: S.me?.id });
     if ($('#stOn', box)?.checked) { await patchCustomer(c, { stage: j.stage }); await logEvent(c.id, 'system', `Moved to ${STAGES[stageIdx(j.stage)].label} (from a drop)`); }
     if (fbRating || $('#fbNote', box).value.trim()) await D.insert('feedback', { context: 'drop', rating: fbRating || null, note: $('#fbNote', box).value.trim() || null, by: S.me?.id });
     close();

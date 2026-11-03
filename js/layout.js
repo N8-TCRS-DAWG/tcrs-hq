@@ -90,7 +90,7 @@ export function planFromSpec(spec) {
     const cat = TYPES[s.cat] ? s.cat : (s.cat === 'wall' ? 'upper' : 'base');
     const sub = SUBS[s.sub] ? s.sub : null;
     const base = sub ? SUBS[sub] : TYPES[cat];
-    const it = { id: uid(), cat: sub === 'sink' ? 'base' : cat, sub, w: n(s.w) || base.w || 30, d: base.d ?? TYPES[cat].d, h: base.h ?? TYPES[cat].h, z: base.z ?? TYPES[cat].z };
+    const it = { id: uid(), cat: sub === 'sink' ? 'base' : cat, sub, w: n(s.w) || base.w || 30, d: n(s.d) || (base.d ?? TYPES[cat].d), h: n(s.h) || (base.h ?? TYPES[cat].h), z: n(s.z) ?? (base.z ?? TYPES[cat].z), label: s.code ? String(s.code).slice(0, 24) : undefined };
     const wall = plan.walls.find((w) => w.name === String(s.wall)) || null;
     if (wall && cat !== 'island') {
       const layer = it.cat === 'upper' || it.z >= 54 ? 'up' : it.cat === 'opening' ? 'op' : 'lo';
@@ -167,7 +167,7 @@ function drawUI() {
       ${E.dirty ? '<span class="pill st-yellow">Unsaved changes</span>' : ''}
       <span class="grow"></span>
       <div class="whose"><button type="button" data-view="plan" class="${E.view === 'plan' ? 'on customer' : ''}">Bird's eye</button><button type="button" data-view="elev" class="${E.view === 'elev' ? 'on customer' : ''}">Wall by wall</button></div>
-      ${ro ? '' : `<button class="btn" type="button" id="lSave">Save</button><button class="btn primary" type="button" id="lRev" title="Customer asked for changes: saves a new version and counts a revision">Save as revision</button>`}
+      ${ro ? '' : `<button class="btn" type="button" id="lUp">⬆ Upload a layout → draw it</button><input type="file" id="lUpIn" accept="application/pdf,image/*" hidden><button class="btn" type="button" id="lSave">Save</button><button class="btn primary" type="button" id="lRev" title="Customer asked for changes: saves a new version and counts a revision">Save as revision</button>`}
     </div>
     ${ro ? '' : `<div class="panel row small">
       <span class="lbl">Quick walls</span>
@@ -260,6 +260,8 @@ function wireUI() {
   });
   $('#lSave', el)?.addEventListener('click', () => saveLayout(false));
   $('#lRev', el)?.addEventListener('click', () => saveLayout(true));
+  $('#lUp', el)?.addEventListener('click', () => $('#lUpIn', el).click());
+  $('#lUpIn', el)?.addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) readLayoutFile(f); });
   $('#toEst', el)?.addEventListener('click', sendTakeoff);
   wireProps();
 }
@@ -461,6 +463,79 @@ function drawElev() {
   };
   svg.onpointermove = (ev) => { if (!drag) return; const p = svgPt(svg, ev); drag.it.off = Math.max(0, Math.min(L - drag.it.w, snap(drag.off + p.x - drag.sx, 1.5))); drawElev(); };
   svg.onpointerup = () => { if (drag) { drag = null; drawUI(); } };
+}
+
+/* ───────── upload a layout (customer sketch, J&K / 2020 PDF) → draw it ───────── */
+const LAYOUT_SYSTEM = `You read kitchen/bath cabinet layouts (J&K or 2020 Design PDFs, hand sketches, photos of drawings) for Twin Cities Remodeling Supply.
+Return ONE JSON object only. Never invent dimensions: if a length is not printed or clearly derivable, leave it null and add a warning.
+Walls: list the walls that carry cabinets or appliances in order around the room, each turning 90 degrees clockwise from the previous one (an L = 2 walls, a U = 3). Lengths in inches.
+Items: every cabinet, appliance, window and door on each wall, in order from the wall's start (left end when facing that wall from inside the room). Use the J&K/2020 code when printed (e.g. B30, SB36, W3042, DB18, BBC42, REF36, DW24). off = inches from the wall start to the item's left edge if derivable, else null (items are then placed end to end). Wall cabinets: cat "wall" and h = height from the code (W3042 → 42). Islands: cat "island" with w = length.
+Shape: {"ceiling":96,"walls":[{"name":"A","length_in":162}],"items":[{"wall":"A","cat":"base|wall|tall|appliance|opening|island","sub":"sink|range|fridge|dw|micro|hood|window|door|null","code":"B30","w":30,"h":null,"off":null}],"notes":"","warnings":[]}`;
+
+async function readLayoutFile(file) {
+  const { c } = E;
+  const { toBase64, shrinkImage } = await import('./drop.js');
+  const box = modalBox('<h2>Reading the layout…</h2>', '<div class="thinking"><span class="spin"></span>Claude is reading ' + esc(file.name) + '. Large PDFs take up to a minute.</div>');
+  try {
+    // keep the original file on the customer
+    const path = `${c.id}/${Date.now()}-${file.name.replace(/[^\w.\-]+/g, '_')}`;
+    await D.upload(file, path);
+    const v = Math.max(0, ...S.files.filter((f) => f.customer_id === c.id && f.ftype === 'Layout').map((f) => f.version)) + 1;
+    await D.insert('files', { customer_id: c.id, path, name: file.name, ftype: 'Layout', version: v, size: file.size, mime: file.type || null, by: S.me?.id });
+    const content = [{ type: 'text', text: `Customer: ${c.name || ''}. Read this layout. File: ${file.name}` }];
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      if (file.size > 20 * 1024 * 1024) throw new Error('That PDF is over 20 MB. Export just the plan/elevation pages.');
+      content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: await toBase64(file) } });
+    } else {
+      const img = await shrinkImage(file, 2000);
+      if (!img) throw new Error('That image could not be read.');
+      content.push({ type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data } });
+    }
+    const txt = await D.ai({ system: LAYOUT_SYSTEM, content, model: 'complex', max_tokens: 6000 });
+    const a = txt.indexOf('{'), z = txt.lastIndexOf('}');
+    const spec = JSON.parse(txt.slice(a, z + 1));
+    const walls = (spec.walls || []).filter((w) => n(w.length_in) > 0);
+    if (!walls.length) throw new Error('Claude could not find wall lengths in that file. ' + ((spec.warnings || []).join(' ') || ''));
+    const byWall = {};
+    (spec.items || []).forEach((i) => { (byWall[i.wall] = byWall[i.wall] || []).push(i.code || i.sub || i.cat); });
+    box.querySelector('.sheet-h h2').textContent = 'Check the layout';
+    box.querySelector('.sheet-b').innerHTML = `
+      ${(spec.warnings || []).length ? `<div class="check-sec" style="border-color:var(--amber)"><b>⚠ Heads up</b>${spec.warnings.map((w) => `<div class="small">${esc(w)}</div>`).join('')}</div>` : ''}
+      <div class="check-sec"><b>Ceiling</b> ${esc(spec.ceiling ?? '?')}"
+      ${walls.map((w) => `<div class="crow"><b style="width:70px">Wall ${esc(w.name)}</b><span>${esc(w.length_in)}"</span><span class="small muted grow">${esc((byWall[w.name] || []).join(' · ') || 'no items')}</span></div>`).join('')}
+      ${(spec.items || []).filter((i) => i.cat === 'island').length ? '<div class="small">Island included (placed in the middle; drag it into position).</div>' : ''}
+      ${spec.notes ? `<div class="small muted">${esc(spec.notes)}</div>` : ''}</div>
+      <label class="small row"><input type="checkbox" id="luRev"> Count this as a layout revision (customer asked for changes)</label>
+      <div class="row"><button class="btn primary" type="button" id="luGo">Draw it as a new layout version</button><button class="btn" type="button" id="luNo">Cancel</button></div>
+      <p class="small muted">The original file is saved under Files as Layout v${v}. Everything stays editable after drawing.</p>`;
+    box.querySelector('#luNo').onclick = () => box.remove();
+    box.querySelector('#luGo').onclick = async () => {
+      const plan = planFromSpec({ ...spec, walls });
+      const prev = custLayouts(c.id)[0];
+      const ver = (prev?.version || 0) + 1;
+      const asRev = box.querySelector('#luRev').checked && !!prev;
+      const row = await D.insert('layouts', { customer_id: c.id, name: prev?.name || 'Kitchen', version: ver, plan, takeoff: takeoff(plan), is_revision: asRev, by: S.me?.id });
+      S.layouts.push(row);
+      await logEvent(c.id, 'system', `Layout v${ver} drawn from ${file.name}`);
+      if (asRev) await bumpRevision(c, +1, `Layout v${ver} from ${file.name}`);
+      box.remove();
+      E = null; // reload editor on the new version
+      renderLayout(document.querySelector('#tabBody') || E?.el, c);
+      toast(`Layout v${ver} drawn. Check wall lengths and positions.`);
+    };
+  } catch (err) {
+    box.querySelector('.sheet-h h2').textContent = 'Could not draw that layout';
+    box.querySelector('.sheet-b').innerHTML = `<p>${esc(err.message)}</p><p class="small muted">The file is still saved under Files. You can type the wall lengths into Quick walls instead.</p><div class="row"><button class="btn" type="button" id="luX">Close</button></div>`;
+    box.querySelector('#luX').onclick = () => box.remove();
+  }
+}
+function modalBox(head, body) {
+  const b = document.createElement('div');
+  b.className = 'sheet-bg top-modal'; b.style.zIndex = 60;
+  b.innerHTML = `<div class="sheet narrow"><div class="sheet-h">${head}<button class="x" type="button" aria-label="Close">×</button></div><div class="sheet-b">${body}</div></div>`;
+  b.querySelector('.x').onclick = () => b.remove();
+  document.body.appendChild(b);
+  return b;
 }
 
 /* ───────── save / export ───────── */
