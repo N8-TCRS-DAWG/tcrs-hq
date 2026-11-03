@@ -1,0 +1,165 @@
+// Boot, login, top bar, routing, live refresh.
+import * as D from './data.js';
+import { S, $, esc, toast, todayISO, addDays } from './core.js';
+import { renderBoard, renderRace } from './board.js';
+import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js';
+import { openDrop } from './drop.js';
+import { renderHelp, renderBrain } from './help.js';
+
+const app = $('#app');
+const VIEWS = { board: 'Board', race: 'Race', help: 'Help & SOPs', brain: 'Prices & partners' };
+
+async function boot() {
+  let res;
+  try { res = await D.init(); } catch (e) { app.innerHTML = `<div class="login"><h2>Can't start HQ</h2><p>${esc(e.message)}</p></div>`; return; }
+  S.demo = res.demo;
+  if (!res.user) return renderLogin();
+  S.me = res.user;
+  await loadAll();
+  const prof = S.profiles.find((p) => p.id === S.me.id);
+  S.role = prof?.role || 'sales';
+  if (S.demo && res.needsSeed) { await seedDemo(); D.markSeeded(); await loadAll(); }
+  if (S.role === 'tv' && location.hash !== '#tv') location.hash = 'tv';
+  D.onChange(onData);
+  D.startLive();
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+async function loadAll() {
+  const res = await Promise.allSettled(D.TABLES.map((t) => D.all(t)));
+  res.forEach((r, i) => { if (r.status === 'fulfilled') S[D.TABLES[i]] = r.value; else console.warn(r.reason); });
+}
+
+const pending = new Set();
+let timer = null;
+function onData(table) {
+  pending.add(table);
+  clearTimeout(timer);
+  timer = setTimeout(async () => {
+    const ts = [...pending]; pending.clear();
+    await Promise.all(ts.map(async (t) => { try { S[t] = await D.all(t); } catch (e) { console.warn(e); } }));
+    rerender();
+  }, 250);
+}
+
+let deferred = false;
+function busy() {
+  const a = document.activeElement;
+  return a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName) && a.type !== 'checkbox' && a.type !== 'file';
+}
+export function rerender() {
+  if (busy()) {
+    if (!deferred) { deferred = true; document.addEventListener('focusout', () => { deferred = false; setTimeout(rerender, 50); }, { once: true }); }
+    return;
+  }
+  renderView();
+  if (currentCustomerId()) refreshCustomer();
+}
+
+function viewKey() {
+  const h = location.hash.replace('#', '');
+  if (h === 'tv') return 'tv';
+  if (h.startsWith('c-')) return 'board';
+  return VIEWS[h] ? h : 'board';
+}
+
+function route() {
+  const h = location.hash.replace('#', '');
+  document.body.classList.toggle('tv', h === 'tv');
+  renderView();
+  if (h.startsWith('c-')) openCustomer(h.slice(2));
+  else if (currentCustomerId()) closeCustomer(true);
+}
+
+function shell(active) {
+  const flow = ['board', 'race', 'help', 'brain'].map((k, i) =>
+    `${i ? '<span class="arrow" aria-hidden="true">›</span>' : ''}<a href="#${k}" class="${active === k ? 'on' : ''}">${VIEWS[k]}</a>`).join('');
+  const me = S.profiles.find((p) => p.id === S.me?.id);
+  return `
+  <header class="top">
+    <a href="#board" aria-label="TCRS HQ home"><img class="logo" src="img/logo-green.png" alt="Twin Cities Remodeling Supply"></a>
+    <nav class="flow" aria-label="Main">${flow}</nav>
+    ${S.role !== 'tv' ? '<button class="drop-btn" id="dropBtn" type="button"><span aria-hidden="true">⬆</span> Drop</button>' : ''}
+    <button class="who" id="whoBtn" type="button" title="Sign out">${esc(me?.name || S.me?.email || '')} · ${esc(S.role)}</button>
+  </header>
+  ${S.demo ? '<div class="banner"><b>Demo mode.</b> Data stays in this browser only, and Claude reading is off. Add the Supabase keys to config.js to go live. Example customers are marked "Example".</div>' : ''}
+  <main id="view"></main>`;
+}
+
+function renderView() {
+  const k = viewKey();
+  if (!$('#view') || app.dataset.view !== k) {
+    app.dataset.view = k;
+    app.innerHTML = k === 'tv' ? '<main id="view"></main>' : shell(k);
+    $('#dropBtn')?.addEventListener('click', () => openDrop({ customerId: currentCustomerId() }));
+    $('#whoBtn')?.addEventListener('click', whoMenu);
+  }
+  const v = $('#view');
+  if (k === 'board') renderBoard(v);
+  else if (k === 'race') renderRace(v, false);
+  else if (k === 'tv') renderRace(v, true);
+  else if (k === 'help') renderHelp(v);
+  else if (k === 'brain') renderBrain(v);
+}
+
+function whoMenu() {
+  if (S.demo) { toast('Demo mode has no logins.'); return; }
+  const b = document.createElement('div');
+  b.className = 'sheet-bg';
+  b.innerHTML = `<div class="sheet narrow"><div class="sheet-h"><h2>Your login</h2><button class="x" type="button" aria-label="Close">×</button></div>
+  <div class="sheet-b"><div class="row"><span class="muted">${esc(S.me.email)}</span><span class="chip">${esc(S.role)}</span></div>
+  <div class="row"><input type="password" id="newPw" placeholder="New password (8+ characters)" class="grow"><button class="btn" id="setPw" type="button">Change password</button></div>
+  <div class="row"><button class="btn danger" id="out" type="button">Sign out</button></div></div></div>`;
+  document.body.appendChild(b);
+  b.querySelector('.x').onclick = () => b.remove();
+  b.onclick = (e) => { if (e.target === b) b.remove(); };
+  b.querySelector('#out').onclick = () => D.signOut();
+  b.querySelector('#setPw').onclick = async () => {
+    const pw = b.querySelector('#newPw').value;
+    if (pw.length < 8) return toast('Use at least 8 characters.');
+    try { await D.setPassword(pw); toast('Password changed.'); b.remove(); } catch (e) { toast(e.message); }
+  };
+}
+
+function renderLogin() {
+  app.innerHTML = `<form class="login" id="loginForm">
+    <img src="img/logo-cream.png" alt="Twin Cities Remodeling Supply">
+    <h2>TCRS HQ</h2>
+    <label class="field"><span class="lbl">Email</span><input type="email" id="em" autocomplete="username" required></label>
+    <label class="field"><span class="lbl">Password</span><input type="password" id="pw" autocomplete="current-password" required></label>
+    <button class="btn primary" type="submit">Sign in</button>
+    <button class="btn ghost small" type="button" id="forgot">Forgot password? Email me a reset link</button>
+    <p class="small muted" id="msg" role="status"></p>
+  </form>`;
+  $('#loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    $('#msg').textContent = 'Signing in…';
+    try { await D.signIn($('#em').value.trim(), $('#pw').value); location.reload(); }
+    catch (err) { $('#msg').textContent = err.message; }
+  };
+  $('#forgot').onclick = async () => {
+    const em = $('#em').value.trim();
+    if (!em) { $('#msg').textContent = 'Type your email first.'; return; }
+    try { await D.resetPassword(em); $('#msg').textContent = 'Reset link sent. Check your email.'; } catch (err) { $('#msg').textContent = err.message; }
+  };
+}
+
+/* Demo examples: clearly marked, only in demo mode. */
+async function seedDemo() {
+  const t = todayISO();
+  const mk = async (c, acts = [], logs = []) => {
+    const row = await D.insert('customers', { data: {}, products: [], services: [], revisions: 0, intake_complete: false, repeat: false, first_contact: t, ...c });
+    for (const a of acts) await D.insert('actions', { customer_id: row.id, done: false, ...a });
+    for (const l of logs) await D.insert('logs', { customer_id: row.id, at: new Date().toISOString(), ...l });
+    return row;
+  };
+  await mk({ name: 'Example — Kitchen lead', phone: '(000) 000-0001', city: 'Roseville', products: ['Cabinets', 'Countertops'], stage: 'new', budget: 15000, source: 'Facebook', tldr: 'Example card. Wants white shaker cabinets and quartz for a 12×14 kitchen. Sent 3 photos, no layout yet.' },
+    [{ title: 'Send intake form', due: t, waiting_on: 'us' }], [{ kind: 'note', summary: 'Example: first inquiry via Facebook Messenger' }]);
+  await mk({ name: 'Example — Basement floor', email: 'example2@example.com', city: 'Maplewood', products: ['Flooring'], stage: 'estimate', first_contact: addDays(t, -9), est_price: 8000, tldr: 'Example card. ~850 sq ft LVP for a basement. Estimate sent, waiting on the tile contractor bid for the bathroom.' },
+    [{ title: 'Tile bid from contractor', due: addDays(t, -5), waiting_on: 'contractor' }]);
+  await mk({ name: 'Example — Repeat flipper', phone: '(000) 000-0003', city: 'St. Paul', ctype: 'Flipper', repeat: true, products: ['Cabinets', 'Appliances'], stage: 'quote', first_contact: addDays(t, -20), est_price: 24000, install_date: addDays(t, 12), conversion: 5, tldr: 'Example card. Repeat flipper. Quote sent for cabinets + appliance package; waiting on their sign-off.' },
+    [{ title: 'Customer to approve quote', due: addDays(t, 2), waiting_on: 'customer' }]);
+}
+
+boot();
