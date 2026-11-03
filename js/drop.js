@@ -261,7 +261,7 @@ function check(j, target) {
   const opts = S.customers.filter((c) => !c.lost).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   const lay = j.layout && Array.isArray(j.layout.walls) && j.layout.walls.length ? j.layout : null;
   const lines = Array.isArray(j.lines) ? j.lines : [];
-  const stageOk = j.stage && STAGES.some((s) => s.k === j.stage) && (!ex || stageIdx(j.stage) > stageIdx(ex.stage));
+  const stageOk = j.stage && STAGES.some((s) => s.k === j.stage) && stageIdx(j.stage) > (ex ? stageIdx(ex.stage) : 0);
   $('.sheet', box).classList.remove('narrow');
   $('.sheet', box).innerHTML = `${head('Check before saving', 'Untick anything wrong. Edit anything. Nothing is saved yet.')}<div class="sheet-b">
     ${(j.warnings || []).length ? `<div class="check-sec st-yellow" style="border-color:var(--amber)"><div class="hd"><h3>⚠ Heads up</h3></div>${j.warnings.map((w) => `<div class="small">${esc(w)}</div>`).join('')}</div>` : ''}
