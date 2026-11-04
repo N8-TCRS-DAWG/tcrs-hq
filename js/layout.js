@@ -1,9 +1,9 @@
 // Layout grid: quick plan view (bird's eye) + wall-by-wall elevations.
 // Units are inches. Walls run in order; items sit flush on a wall's room side.
-import * as D from './data.js?v=20261104125246';
-import { S, esc, $, $$, n, r2, toast, canWrite, logEvent, custLayouts, custSizes, todayISO } from './core.js?v=20261104125246';
-import { bumpRevision } from './customer.js?v=20261104125246';
-import { addLinesToQuote, ensureQuote } from './quote.js?v=20261104125246';
+import * as D from './data.js?v=20261104141406';
+import { S, esc, $, $$, n, r2, toast, canWrite, logEvent, custLayouts, custSizes, todayISO } from './core.js?v=20261104141406';
+import { bumpRevision } from './customer.js?v=20261104141406';
+import { addLinesToQuote, ensureQuote } from './quote.js?v=20261104141406';
 
 const TYPES = {
   base: { label: 'Base cabinet', d: 24, h: 34.5, z: 0, fill: '#E3C9A0', stroke: '#8E6A3A' },
@@ -483,7 +483,7 @@ Shape: {"ceiling":96,"walls":[{"name":"A","length_in":162}],"items":[{"wall":"A"
 
 async function readLayoutFile(file) {
   const { c } = E;
-  const { toBase64, shrinkImage } = await import('./drop.js?v=20261104125246');
+  const { toBase64, shrinkImage } = await import('./drop.js?v=20261104141406');
   const box = modalBox('<h2>Reading the layout…</h2>', '<div class="thinking"><span class="spin"></span>Claude is reading ' + esc(file.name) + '. Large PDFs take up to a minute.</div>');
   try {
     // keep the original file on the customer

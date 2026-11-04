@@ -1,8 +1,8 @@
 // Board (kanban) and Race (glance / office TV).
-import * as D from './data.js?v=20261104125246';
-import { S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104125246';
-import { moveStage } from './customer.js?v=20261104125246';
-import { openDrop } from './drop.js?v=20261104125246';
+import * as D from './data.js?v=20261104141406';
+import { S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104141406';
+import { moveStage } from './customer.js?v=20261104141406';
+import { openDrop } from './drop.js?v=20261104141406';
 
 const F = { st: null, q: '', lost: false };
 // Only "Show lost" is remembered. Search and bubble filters reset on each visit so the board always opens full.
@@ -37,7 +37,7 @@ function card(c) {
   const day = c.first_contact ? daysBetween(c.first_contact, todayISO()) : null;
   const dates = keyDates(c);
   const v = value(c);
-  return `<article class="card st-${st.k}" draggable="${canWrite()}" data-id="${c.id}" tabindex="0" aria-label="${esc(c.name)}, ${STATUS_TEXT[st.k]}">
+  return `<article class="card st-${st.k}" draggable="${canWrite() && innerWidth > 700}" data-id="${c.id}" tabindex="0" aria-label="${esc(c.name)}, ${STATUS_TEXT[st.k]}">
     <div class="t"><span class="name">${esc(c.name || 'No name yet')}</span>${early ? `<span class="score" title="Lead score ${sc.total}/100: likely to buy, budget, repeat customer, intake quality">${sc.total}</span>` : ''}</div>
     ${(c.products || []).length ? `<div class="prods">${c.products.map((p) => `<span class="chip">${esc(p)}</span>`).join('')}</div>` : ''}
     <div class="next" title="${esc(nx ? nx.title : st.why)}"><span class="dot" style="margin-top:4px"></span><span class="nxt">${nx ? esc(nx.title) + (nx.due ? ` · <span class="${nx.due < todayISO() ? 'warn' : ''}">${fmtDate(nx.due)}</span>` : '') : `<b>${esc(st.why)}</b>`}</span></div>
@@ -55,7 +55,7 @@ function card(c) {
 export function renderBoard(v) {
   const list = visible();
   const counts = { red: 0, yellow: 0, green: 0 };
-  S.customers.filter((c) => !c.lost && c.stage !== 'paid').forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
+  S.customers.filter((c) => !c.lost).forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
   const openVal = S.customers.filter((c) => !c.lost && c.stage !== 'paid').reduce((a, c) => a + value(c), 0);
   const collected = S.customers.filter((c) => !c.lost).reduce((a, c) => a + received(c), 0);
   const feesOwed = S.quotes.filter((q) => q.status === 'accepted').reduce((a, q) => a + referralLines(q).filter((l) => l.feeStatus !== 'received').length, 0);
@@ -69,11 +69,11 @@ export function renderBoard(v) {
     <span class="grow"></span>
     ${S.payments.filter((p) => p.status === 'review').length && canWrite() ? `<button class="btn" type="button" id="payTray" style="border-color:var(--amber);background:var(--amber-bg)">💳 ${S.payments.filter((p) => p.status === 'review').length} QuickBooks payment${S.payments.filter((p) => p.status === 'review').length > 1 ? 's' : ''} to match</button>` : ''}
     <span class="small muted">Open pipeline <b class="num">${money0(openVal)}</b> · Collected <b class="num" style="color:var(--green)">${money0(collected)}</b>${feesOwed ? ` · <b>${feesOwed}</b> referral fee${feesOwed > 1 ? 's' : ''} to collect` : ''}</span>
-    ${canWrite() ? '<button class="btn" type="button" id="newLead">+ New lead by hand</button>' : ''}
+    ${canWrite() ? '<button class="btn sm" type="button" id="newLead" title="Type a lead in by hand">+ New lead</button>' : ''}
   </div>
   ${F.st ? focusPanel(F.st) : ''}
   <details class="legend"><summary>How this board works</summary>Card color = whose move it is. The dark badge is the lead score (0–100). Drag a card to another column, or open it and click a stage. Shortcuts: <kbd>D</kbd> Drop · <kbd>N</kbd> new lead · <kbd>/</kbd> search · drag files or paste anywhere.</details>
-  <div class="board-wrap"><div class="board" style="grid-template-columns:${STAGES.map((s, i) => list.some((c) => (c.stage || 'new') === s.k) ? 'minmax(190px, 1.6fr)' : i === STAGES.length - 1 ? 'minmax(130px, 0.9fr)' : 'minmax(112px, 0.7fr)').join(' ')}">
+  <div class="board-wrap"><div class="board" style="grid-template-columns:${STAGES.map((s) => list.some((c) => (c.stage || 'new') === s.k) ? 'minmax(0, 1.5fr)' : 'minmax(0, 0.55fr)').join(' ')}">
     ${STAGES.map((s, i) => {
       const cs = list.filter((c) => (c.stage || 'new') === s.k).sort(sortCards);
       const sum = cs.reduce((a, c) => a + value(c), 0);
@@ -86,7 +86,8 @@ export function renderBoard(v) {
   ${S.customers.length && !list.length ? `<div class="empty" style="margin-top:14px"><h3>${S.customers.filter((c) => F.lost || !c.lost).length} leads are hidden by ${F.q ? `the search "${esc(F.q)}"` : 'a filter'}</h3><button class="btn primary" type="button" id="fReset">Show all leads</button></div>` : ''}
   ${S.customers.length ? '' : `<div class="empty" style="margin-top:14px"><h3>No leads yet</h3><p>Press <b>Drop</b> to paste an email, a call transcript, photos or a layout. Claude builds the customer card for you to check.</p></div>`}`;
 
-  $$('.stat', v).forEach((b) => (b.onclick = () => { F.st = F.st === b.dataset.st ? null : b.dataset.st; listOpen = false; renderBoard(v); }));
+  fitView(v);
+  $$('.stat', v).forEach((b) => (b.onclick = () => { F.st = F.st === b.dataset.st ? null : b.dataset.st; listOpen = !!F.st; renderBoard(v); }));
   $('#fList', v)?.addEventListener('click', () => { listOpen = !listOpen; renderBoard(v); });
   $('#fClear', v)?.addEventListener('click', () => { F.st = null; renderBoard(v); });
   $('#fReset', v)?.addEventListener('click', () => { F.st = null; F.q = ''; saveF(); renderBoard(v); });
@@ -143,19 +144,21 @@ function openPayTray() {
 const WAIT = { red: ['us'], yellow: ['supplier', 'contractor'], green: ['customer'] };
 const dueSteps = (c) => openActions(c.id).filter((a) => a.due && a.due <= todayISO());
 const LABEL = { ...STATUS_TEXT, due: 'Due today / late' };
+const COURT = { us: 'Our court', customer: "Customer's court", supplier: "Supplier's court", contractor: "Contractor's court" };
 function focusPanel(k) {
   const t = todayISO();
-  const leads = S.customers.filter((c) => !c.lost && (k === 'due' ? dueSteps(c).length : c.stage !== 'paid' && status(c).k === k));
+  const leads = S.customers.filter((c) => !c.lost && (k === 'due' ? dueSteps(c).length : status(c).k === k));
   const rows = [];
   leads.forEach((c) => {
+    const st = status(c);
     const acts = k === 'due' ? dueSteps(c) : openActions(c.id).filter((a) => WAIT[k].includes(a.waiting_on));
-    if (!acts.length) rows.push({ c, title: k === 'red' ? 'No next step set — open and add one' : status(c).why, due: null });
+    if (!acts.length) rows.push({ c, title: st.why, due: null, who: st.who || (k === 'green' ? 'customer' : k === 'yellow' ? 'supplier' : 'us') });
     acts.forEach((a) => rows.push({ c, title: a.title, due: a.due, who: a.waiting_on }));
   });
   rows.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
   return `<section class="focus-panel st-${k} ${listOpen ? 'open' : ''}" aria-label="${esc(LABEL[k])}">
-    <div class="fh"><span class="dot"></span><h3>${esc(LABEL[k])}: board shows ${leads.length} lead${leads.length === 1 ? '' : 's'}</h3>${rows.length ? `<button class="btn sm" type="button" id="fList" aria-expanded="${listOpen}">${listOpen ? 'Hide' : 'Show'} ${rows.length} step${rows.length === 1 ? '' : 's'} as a list ${listOpen ? '▴' : '▾'}</button>` : ''}<span class="grow"></span><button class="btn sm" type="button" id="fClear">✕ Show all leads</button></div>
-    ${!listOpen ? '' : '<div class="focus-list">' + (rows.map((r) => `<div class="focus-row" data-id="${r.c.id}" tabindex="0"><span class="due ${r.due && r.due < t ? 'late' : ''}">${r.due ? (r.due < t ? 'Late · ' : '') + fmtDate(r.due) : 'No date'}</span><span>${esc(r.title)}${r.who && (k === 'due' || (r.who !== 'us' && r.who !== 'customer')) ? ` <span class="chip">${esc(r.who === 'us' ? 'our move' : r.who)}</span>` : ''}</span><span class="fwho">${esc(r.c.name || 'No name')}</span></div>`).join('') || '<p class="small muted">Nothing here. Nice.</p>') + '</div>'}
+    <div class="fh"><span class="dot"></span><h3>${esc(LABEL[k])}: ${leads.length} lead${leads.length === 1 ? '' : 's'}</h3>${rows.length ? `<button class="btn sm" type="button" id="fList" aria-expanded="${listOpen}">${listOpen ? 'Hide list ▴' : `Show ${rows.length} step${rows.length === 1 ? '' : 's'} ▾`}</button>` : ''}<span class="grow"></span><button class="btn sm" type="button" id="fClear">✕ Show all leads</button></div>
+    ${!listOpen ? '' : '<div class="focus-list">' + (rows.map((r) => `<div class="focus-row" data-id="${r.c.id}" tabindex="0"><span class="fwho">${esc(r.c.name || 'No name')}</span><span class="ft">${esc(r.title)}</span><span class="court c-${r.who}">${COURT[r.who] || ''}</span><span class="due ${r.due && r.due < t ? 'late' : ''}">${r.due ? (r.due < t ? 'Late · ' : '') + fmtDate(r.due) : ''}</span></div>`).join('') || '<p class="small muted">Nothing here. Nice.</p>') + '</div>'}
   </section>`;
 }
 
@@ -172,7 +175,7 @@ let clockTimer = null;
 export function renderRace(v, tv) {
   const list = S.customers.filter((c) => !c.lost);
   const counts = { red: 0, yellow: 0, green: 0 };
-  list.filter((c) => c.stage !== 'paid').forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
+  list.forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
   const thirty = new Date(Date.now() - 30 * 864e5).toISOString();
   v.innerHTML = `
   <div class="race-top">
@@ -181,12 +184,11 @@ export function renderRace(v, tv) {
     ${tv ? '' : '<a class="btn" href="#tv">Full-screen TV mode</a>'}
   </div>
   <div class="race-wrap"><div class="race">
-    ${STAGES.map((s, i) => `<div class="lane-h ${i === STAGES.length - 1 ? 'fin' : ''}">${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.short)}</div>`).join('')}
-    ${STAGES.map((s) => {
+    ${STAGES.map((s, i) => {
       let cs = list.filter((c) => (c.stage || 'new') === s.k);
       if (s.k === 'paid') cs = cs.filter((c) => (c.paid?.at || c.updated_at) >= thirty);
       cs.sort((a, b) => (a.first_contact || '').localeCompare(b.first_contact || ''));
-      return `<div class="lane">${cs.map((c) => {
+      return `<div class="rcol ${cs.length ? '' : 'empty'}"><div class="lane-h ${i === STAGES.length - 1 ? 'fin' : ''}">${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.short)} <span class="num muted">${cs.length}</span></div><div class="lane">${cs.map((c) => {
         const st = status(c);
         const d = keyDates(c);
         return `<div class="car st-${st.k}" data-id="${c.id}" title="${esc(STATUS_TEXT[st.k])}">
@@ -194,10 +196,11 @@ export function renderRace(v, tv) {
           <div class="d"><span>${esc((c.products || []).map((p) => PROD_SHORT[p] || p).join(' · ') || '—')}</span></div>
           <div class="d"><span>Day ${c.first_contact ? daysBetween(c.first_contact, todayISO()) : '?'} · since ${fmtDate(c.first_contact)}</span>${d.map((x) => `<span class="${x.warn ? 'warn' : ''}">${esc(x.text)}</span>`).join('')}</div>
         </div>`;
-      }).join('')}</div>`;
+      }).join('')}</div></div>`;
     }).join('')}
   </div></div>
-  ${tv ? '<p class="small muted" style="margin-top:10px">Updates live. Paid column shows the last 30 days.</p>' : '<p class="small muted" style="margin-top:10px">Same cards and colors as the Board, cut down for a glance. On the office TV, sign in with the TV login: it opens here and refreshes itself.</p>'}`;
+  ${tv ? '<p class="small muted" style="margin-top:10px">Updates live. Paid column shows the last 30 days.</p>' : ''}`;
+  if (!tv) fitView(v);
   if (!tv) $$('.car', v).forEach((el) => (el.onclick = () => (location.hash = 'c-' + el.dataset.id)));
   clearInterval(clockTimer);
   if (tv) {
@@ -267,3 +270,21 @@ export function renderTV(v) {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && document.body.classList.contains('tv') && navigator.wakeLock) navigator.wakeLock.request('screen').then((w) => (wakeLock = w)).catch(() => {}); });
 function addDaysISO(iso, k) { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + k); return d.toISOString().slice(0, 10); }
+
+/* Fit every card on screen without page scrolling: full → compact → mini cards. Phones get stage rows of name pills. */
+const DENSITY = ['full', 'compact', 'slim', 'mini'];
+export function fitView(v) {
+  const wrap = v.querySelector('.board-wrap, .race-wrap');
+  if (!wrap || document.body.classList.contains('tv')) return;
+  const inner = wrap.firstElementChild;
+  const phone = innerWidth <= 700;
+  inner.classList.toggle('phone', phone);
+  if (phone) { wrap.style.height = ''; inner.dataset.d = 'mini'; return; }
+  const main = wrap.closest('main');
+  const padB = main ? parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0;
+  const avail = Math.max(260, Math.floor(innerHeight - wrap.getBoundingClientRect().top - padB - 6));
+  wrap.style.height = avail + 'px';
+  for (const d of DENSITY) { inner.dataset.d = d; if (inner.scrollHeight <= wrap.clientHeight + 1) break; }
+}
+let fitT;
+window.addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(() => { const w = document.querySelector('.board-wrap, .race-wrap'); if (w) fitView(w.parentElement); }, 150); });

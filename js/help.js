@@ -1,6 +1,6 @@
 // Help & SOPs, and "Prices & partners" (what HQ learns from + settings).
-import * as D from './data.js?v=20261104125246';
-import { S, STAGES, PRODUCTS, esc, $, $$, n, toast, canWrite, settings, DEFAULT_SETTINGS, money, fmtDate } from './core.js?v=20261104125246';
+import * as D from './data.js?v=20261104141406';
+import { S, STAGES, PRODUCTS, esc, $, $$, n, toast, canWrite, settings, DEFAULT_SETTINGS, money, fmtDate } from './core.js?v=20261104141406';
 
 const FORMS = 'https://script.google.com/macros/s/AKfycby_jpUiOvp36ytos3qfvdOpeaG_xvmkWuZLqGlufbKH9vlwi36wJmW0ZbyqJmWY6iix/exec';
 export const STARTER_DOCS = [

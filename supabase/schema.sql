@@ -87,6 +87,7 @@ create table if not exists public.logs (
   at timestamptz not null default now(),
   summary text,
   body text,
+  who text check (who in ('us','customer','supplier','contractor')),  -- who spoke
   by uuid default auth.uid()
 );
 

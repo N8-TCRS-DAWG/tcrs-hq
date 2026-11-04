@@ -1,5 +1,5 @@
 // Shared state, helpers and business rules.
-import * as D from './data.js?v=20261104125246';
+import * as D from './data.js?v=20261104141406';
 
 export const S = {
   customers: [], actions: [], logs: [], files: [], sizes: [], layouts: [], quotes: [],
@@ -91,12 +91,52 @@ export const custQuote = (cid) => S.quotes.filter((q) => q.customer_id === cid).
 export function status(c) {
   if (c.lost) return { k: 'none', why: 'Lost' };
   if (c.status_override) return { k: c.status_override, why: 'Set by hand' };
-  if (c.stage === 'paid') return { k: 'none', why: 'Paid — done' };
   const open = openActions(c.id);
-  if (!open.length) return { k: 'red', why: 'No next step' };
-  if (open.some((a) => a.waiting_on === 'us')) return { k: 'red', why: 'We owe a step' };
-  if (open.some((a) => a.waiting_on === 'supplier' || a.waiting_on === 'contractor')) return { k: 'yellow', why: 'Waiting on a partner' };
-  return { k: 'green', why: 'Waiting on customer' };
+  const t = todayISO();
+  if (c.stage === 'paid' && !open.length) return { k: 'none', why: 'Paid — done' };
+  if (open.length) {
+    const us = open.find((a) => a.waiting_on === 'us');
+    if (us) return { k: 'red', why: us.title, who: 'us' };
+    const late = open.filter((a) => a.due && daysBetween(a.due, t) >= 3);
+    if (late.length && late.length === open.length) return { k: 'red', why: `Follow up: "${late[0].title}" is ${daysBetween(late[0].due, t)} days late`, who: 'us' };
+    const p = open.find((a) => a.waiting_on === 'supplier' || a.waiting_on === 'contractor');
+    if (p) return { k: 'yellow', why: p.title, who: p.waiting_on };
+    return { k: 'green', why: open[0].title, who: 'customer' };
+  }
+  // No open steps: read the last real message to see whose court the ball is in.
+  const last = S.logs.filter((l) => l.customer_id === c.id && l.kind !== 'system' && l.kind !== 'upload').sort((a, b) => b.at.localeCompare(a.at))[0];
+  if (!last) return { k: 'red', why: 'No next step and no history — add the first step', who: 'us' };
+  const days = daysBetween(last.at.slice(0, 10), t);
+  const from = last.who || logFrom(last.summary || '');
+  const ago = days === 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`;
+  if (from === 'customer') return { k: 'red', why: `Customer wrote ${ago} — reply`, who: 'us' };
+  if (from === 'supplier' || from === 'contractor') {
+    if (partnerAsked(last.summary || '')) return { k: 'yellow', why: `Waiting on ${from} since ${ago}`, who: from };
+    return { k: 'red', why: `${from === 'supplier' ? 'Supplier' : 'Contractor'} replied ${ago} — pass it on`, who: 'us' };
+  }
+  // We spoke last.
+  if (/\b(will|going to|plan(s)? to|promised|by (today|tomorrow|eod))\b/i.test(last.summary || '')) return { k: 'red', why: `We promised: ${String(last.summary).slice(0, 90)}`, who: 'us' };
+  if (partnerAsked(last.summary || '')) return days > 3 ? { k: 'red', why: `Chase partner: no answer in ${days} days`, who: 'us' } : { k: 'yellow', why: `Asked a partner ${ago}`, who: 'supplier' };
+  if (days > 4) return { k: 'red', why: `Follow up: customer quiet ${days} days`, who: 'us' };
+  return { k: 'green', why: `We replied ${ago} — their move`, who: 'customer' };
+}
+
+/* Who wrote a history line: us / customer / supplier / contractor (best guess from the wording). */
+const US_RX = /^(nathan|zuggy|trevor|lee|tcrs|we|i|our)\b|^(sent|replied|followed up|called|texted|emailed|left (a )?voicemail|quoted)\b/i;
+const SUP_RX = /\b(j&k|j ?& ?k|twin rivers|supplier|vendor|distributor|warehouse|ge appliance|cabinetry)\b/i;
+const CON_RX = /\b(installer|contractor|plumber|electrician|tile (guy|setter)|crew|fabricator)\b/i;
+function partnerNames(type) { return S.partners.filter((p) => !type || p.ptype === type).map((p) => p.name?.toLowerCase()).filter((n) => n && n.length > 2); }
+export function logFrom(text) {
+  const s = String(text).trim();
+  const head = s.toLowerCase().split(/\s+/).slice(0, 4).join(' ');
+  if (US_RX.test(s)) return 'us';
+  if (partnerNames('supplier').some((n) => head.startsWith(n) || head.includes(n)) || SUP_RX.test(head)) return 'supplier';
+  if (partnerNames('contractor').some((n) => head.startsWith(n)) || CON_RX.test(head)) return 'contractor';
+  return 'customer';
+}
+function partnerAsked(text) {
+  const s = String(text).toLowerCase();
+  return US_RX.test(text) && /\b(asked|told|sent to|requested|waiting on|ordered from)\b/.test(s) && (SUP_RX.test(s) || CON_RX.test(s) || partnerNames().some((n) => s.includes(n)));
 }
 export const STATUS_TEXT = { red: 'We need to act', yellow: 'Waiting on supplier / contractor', green: 'Waiting on customer', none: 'Done' };
 

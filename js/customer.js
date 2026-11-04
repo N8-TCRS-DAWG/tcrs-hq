@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261104125246';
+import * as D from './data.js?v=20261104141406';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName,
-} from './core.js?v=20261104125246';
-import { openDrop } from './drop.js?v=20261104125246';
-import { renderLayout } from './layout.js?v=20261104125246';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261104125246';
+} from './core.js?v=20261104141406';
+import { openDrop } from './drop.js?v=20261104141406';
+import { renderLayout } from './layout.js?v=20261104141406';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261104141406';
 
 let curId = null;
 let tab = 'overview';
@@ -452,4 +452,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261104125246';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261104141406';

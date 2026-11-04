@@ -1,9 +1,9 @@
 // The Drop: everything enters HQ here. Read → Check → Save.
-import * as D from './data.js?v=20261104125246';
-import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, money0, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js?v=20261104125246';
-import { bumpRevision } from './customer.js?v=20261104125246';
-import { planFromSpec } from './layout.js?v=20261104125246';
-import { addLinesToQuote } from './quote.js?v=20261104125246';
+import * as D from './data.js?v=20261104141406';
+import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, money0, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js?v=20261104141406';
+import { bumpRevision } from './customer.js?v=20261104141406';
+import { planFromSpec } from './layout.js?v=20261104141406';
+import { addLinesToQuote } from './quote.js?v=20261104141406';
 
 let box = null;
 let st = null; // { customerId, files:[{file, type, thumb}], text, instr }
@@ -185,7 +185,7 @@ JSON shape:
  "payment":{"status":"none|deposit|partial|full","amount":null,"method":"QuickBooks|Clover|Check|Cash|Card|Other|null","date":null,"note":""},
  "job_value":null,
  "tldr":"",
- "log":[{"kind":"email|call|text|note|visit","date":"YYYY-MM-DD","summary":"one line"}],
+ "log":[{"kind":"email|call|text|note|visit","date":"YYYY-MM-DD","who":"us|customer|supplier|contractor","summary":"one line, starting with who spoke (e.g. \"Nathan sent…\", \"Bri asked…\", \"J&K returned…\")"}],
  "actions":[{"title":"","due":"YYYY-MM-DD|null","whose":"us|supplier|contractor|customer"}],
  "sizes":[{"what":"","value":0,"unit":"in|ft|lf|sf|ea","source":"tape|layout|photo|scan|customer"}],
  "files":[{"index":0,"type":"Photo|Layout|Rendering|Supplier quote|Contractor quote|Estimate|Quote|Agreement|Scan|Other","note":""}],
@@ -376,7 +376,7 @@ async function save(j, lay, lines) {
     for (const [i, l] of (j.log || []).entries()) {
       if (!$(`[data-log="${i}"]`, box)?.checked) continue;
       const d = $(`[data-ld="${i}"]`, box).value;
-      await D.insert('logs', { customer_id: c.id, kind: $(`[data-lk="${i}"]`, box).value, at: d ? new Date(d + 'T12:00').toISOString() : new Date().toISOString(), summary: $(`[data-ls="${i}"]`, box).value, by: S.me?.id });
+      await D.insert('logs', { customer_id: c.id, kind: $(`[data-lk="${i}"]`, box).value, at: d ? new Date(d + 'T12:00').toISOString() : new Date().toISOString(), summary: $(`[data-ls="${i}"]`, box).value, who: ['us', 'customer', 'supplier', 'contractor'].includes(j.log[i]?.who) ? j.log[i].who : null, by: S.me?.id });
     }
     if (st.text.trim()) await logEvent(c.id, 'upload', `Dropped text${st.instr ? ': ' + st.instr : ''}`, st.text);
     else if (st.files.length) await logEvent(c.id, 'upload', `Dropped ${st.files.length} file${st.files.length > 1 ? 's' : ''}`);
