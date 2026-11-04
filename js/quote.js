@@ -1,10 +1,10 @@
 // Estimate → Quote: one growing document. COST = TCRS pays. PRICE = customer pays.
-import * as D from './data.js';
+import * as D from './data.js?v=20261104125246';
 import {
   S, PRODUCTS, esc, $, $$, n, r2, money, money0, settings, lineCalc, optionCalc, quoteCalc, custQuote, custSizes, custLayouts,
   todayISO, addDays, fmtDateLong, toast, canWrite, logEvent, patchCustomer, learnedContext, stageIdx, custFiles,
-} from './core.js';
-import { modal, moveStage } from './customer.js';
+} from './core.js?v=20261104125246';
+import { modal, moveStage } from './customer.js?v=20261104125246';
 
 const KINDS = [['material', 'Material'], ['delivery', 'Delivery'], ['install', 'Installation'], ['fee', 'Fee'], ['discount', 'Discount']];
 const SEC_NOTE = {

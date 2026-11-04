@@ -1,12 +1,41 @@
 // Boot, login, top bar, routing, live refresh.
-import * as D from './data.js';
-import { S, $, esc, toast, todayISO, addDays } from './core.js';
-import { renderBoard, renderRace, renderTV } from './board.js';
-import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js';
-import { openDrop, dropOpen, addToDrop } from './drop.js';
-import { renderHelp, renderBrain } from './help.js';
+import * as D from './data.js?v=20261104125246';
+import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261104125246';
+import { renderBoard, renderRace, renderTV } from './board.js?v=20261104125246';
+import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261104125246';
+import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261104125246';
+import { renderHelp, renderBrain } from './help.js?v=20261104125246';
 
+import { BUILD } from './version.js?v=20261104125246';
 const app = $('#app');
+
+/* Updates: if a newer HQ is published, reload (TV) or offer a one-click reload. */
+async function checkVersion() {
+  try {
+    const t = await (await fetch('js/version.js?x=' + Date.now(), { cache: 'no-store' })).text();
+    const live = (t.match(/BUILD = '(\d+)'/) || [])[1];
+    if (!live || live === BUILD) return;
+    if (document.body.classList.contains('tv')) { location.reload(); return; }
+    if (document.getElementById('updBar')) return;
+    const b = document.createElement('div');
+    b.id = 'updBar'; b.className = 'upd-bar';
+    b.innerHTML = '<span>A newer version of HQ is ready.</span><button type="button" class="btn primary sm">Reload now</button>';
+    b.querySelector('button').onclick = () => location.reload();
+    document.body.appendChild(b);
+  } catch {}
+}
+setInterval(checkVersion, 5 * 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkVersion(); });
+
+/* Never fail silently: show what broke and a reload button. */
+window.addEventListener('error', (e) => {
+  if (!e.message || document.getElementById('errBar')) return;
+  const b = document.createElement('div');
+  b.id = 'errBar'; b.className = 'upd-bar err';
+  b.innerHTML = `<span>Something went wrong on this screen: ${esc(e.message).slice(0, 140)}</span><button type="button" class="btn sm">Reload</button>`;
+  b.querySelector('button').onclick = () => location.reload();
+  document.body.appendChild(b);
+});
 const VIEWS = { board: 'Board', race: 'Race', help: 'Help & SOPs', brain: 'Prices & partners' };
 
 const AUTH_LINK = (/type=(invite|recovery|signup|magiclink)/.exec(location.hash) || [])[1] || null;
@@ -26,6 +55,7 @@ async function boot() {
   if (S.role === 'tv' && location.hash !== '#tv') location.hash = 'tv';
   D.onChange(onData);
   D.startLive();
+  checkVersion();
   if (S.role !== 'tv') { wireAnywhere(); wireSaveState(); }
   window.addEventListener('hashchange', route);
   // TV: click = full screen; Esc leaves TV mode (except for the TV login)

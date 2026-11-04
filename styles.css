@@ -109,17 +109,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--gold); outline: 
 .strip .stat:hover { border-color: var(--st); }
 .strip .stat.on { border-color: var(--st); background: var(--st); color: #fff; }
 .strip .stat.on .dot { background: #fff; }
-.focus-panel { background: var(--card); border: 2px solid var(--st); border-radius: var(--r); padding: 10px 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 6px; }
+.focus-panel { background: var(--card); border: 2px solid var(--st); border-radius: var(--r); padding: 6px 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
+.focus-list { max-height: 190px; overflow-y: auto; overscroll-behavior: contain; }
 .focus-panel .fh { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.focus-panel .fh h3 { font-size: 16px; color: var(--st); }
+.focus-panel .fh h3 { font-size: 14.5px; color: var(--st); }
 .focus-row { display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 220px); gap: 10px; align-items: center; padding: 6px 4px; border-top: 1px solid var(--line); cursor: pointer; border-radius: 6px; }
 .focus-row:hover { background: var(--sunk); }
 .focus-row .due { font-variant-numeric: tabular-nums; font-size: 12.5px; }
 .focus-row .due.late { color: var(--red); font-weight: 700; }
-.focus-row .who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 640px) { .focus-row { grid-template-columns: 70px minmax(0, 1fr); } .focus-row .who { grid-column: 2; } }
+.focus-row .fwho { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .focus-row { grid-template-columns: 70px minmax(0, 1fr); } .focus-row .fwho { grid-column: 2; } }
 .strip .stat b { font-family: var(--display); font-size: 18px; }
-.legend { font-size: 12px; color: var(--muted); }
+.legend { font-size: 12px; color: var(--muted); margin: -4px 0 8px; }
+.legend summary { cursor: pointer; width: max-content; }
+.card .next .nxt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* ── kanban ── */
 .board-wrap { overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
@@ -388,3 +391,6 @@ body.tv main { padding: 18px 26px; height: 100vh; }
 .tv-ev .when { font-size: 16px; color: var(--muted); font-weight: 700; }
 .tv-ev .what { font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
 .tv-ev .evn { font-family: var(--display); font-size: 22px; font-weight: 700; }
+
+.upd-bar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(10px + env(safe-area-inset-top, 0px)); z-index: 120; background: var(--card); border: 2px solid var(--gold); border-radius: 12px; padding: 8px 12px; display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow); max-width: calc(100vw - 32px); font-weight: 600; }
+.upd-bar.err { border-color: var(--red); }

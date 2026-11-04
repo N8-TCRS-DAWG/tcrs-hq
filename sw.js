@@ -1,6 +1,6 @@
 // Minimal service worker: makes HQ installable and keeps the app shell
 // available. Always tries the network first so updates show right away.
-const CACHE = 'tcrs-hq-v2';
+const CACHE = 'tcrs-hq-20261104125246';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', (e) => {

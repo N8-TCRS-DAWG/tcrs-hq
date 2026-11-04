@@ -1,12 +1,14 @@
 // Board (kanban) and Race (glance / office TV).
-import * as D from './data.js';
-import { S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js';
-import { moveStage } from './customer.js';
-import { openDrop } from './drop.js';
+import * as D from './data.js?v=20261104125246';
+import { S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104125246';
+import { moveStage } from './customer.js?v=20261104125246';
+import { openDrop } from './drop.js?v=20261104125246';
 
 const F = { st: null, q: '', lost: false };
-try { Object.assign(F, JSON.parse(localStorage.getItem('hq-board-filter') || '{}')); } catch {}
-const saveF = () => { try { localStorage.setItem('hq-board-filter', JSON.stringify(F)); } catch {} };
+// Only "Show lost" is remembered. Search and bubble filters reset on each visit so the board always opens full.
+try { F.lost = !!JSON.parse(localStorage.getItem('hq-board-filter') || '{}').lost; } catch {}
+const saveF = () => { try { localStorage.setItem('hq-board-filter', JSON.stringify({ lost: F.lost })); } catch {} };
+let listOpen = false;
 
 const PROD_SHORT = { 'Cabinets': 'Cab', 'Countertops': 'Tops', 'Flooring': 'Floor', 'Appliances': 'Appl', 'Doors & trim': 'Doors', 'Garage doors': 'Garage', 'Sauna / plunge': 'Sauna', 'Furniture': 'Furn', 'Other': 'Other' };
 
@@ -38,7 +40,7 @@ function card(c) {
   return `<article class="card st-${st.k}" draggable="${canWrite()}" data-id="${c.id}" tabindex="0" aria-label="${esc(c.name)}, ${STATUS_TEXT[st.k]}">
     <div class="t"><span class="name">${esc(c.name || 'No name yet')}</span>${early ? `<span class="score" title="Lead score ${sc.total}/100: likely to buy, budget, repeat customer, intake quality">${sc.total}</span>` : ''}</div>
     ${(c.products || []).length ? `<div class="prods">${c.products.map((p) => `<span class="chip">${esc(p)}</span>`).join('')}</div>` : ''}
-    <div class="next"><span class="dot" style="margin-top:4px"></span><span>${nx ? esc(nx.title) + (nx.due ? ` · <span class="${nx.due < todayISO() ? 'warn' : ''}">${fmtDate(nx.due)}</span>` : '') : `<b>${esc(st.why)}</b>`}</span></div>
+    <div class="next" title="${esc(nx ? nx.title : st.why)}"><span class="dot" style="margin-top:4px"></span><span class="nxt">${nx ? esc(nx.title) + (nx.due ? ` · <span class="${nx.due < todayISO() ? 'warn' : ''}">${fmtDate(nx.due)}</span>` : '') : `<b>${esc(st.why)}</b>`}</span></div>
     <div class="meta">
       ${day != null ? `<span title="Days since first contact">${day === 0 ? 'New today' : day + (day === 1 ? ' day' : ' days') + ' in'}</span>` : ''}
       ${v ? `<span>${money0(v)}</span>` : ''}
@@ -70,7 +72,7 @@ export function renderBoard(v) {
     ${canWrite() ? '<button class="btn" type="button" id="newLead">+ New lead by hand</button>' : ''}
   </div>
   ${F.st ? focusPanel(F.st) : ''}
-  <p class="legend">Card color = whose move it is. The dark badge is the lead score (0–100). Drag a card to another column, or open it and click a stage. Shortcuts: <kbd>D</kbd> Drop · <kbd>N</kbd> new lead · <kbd>/</kbd> search · drag files or paste anywhere.</p>
+  <details class="legend"><summary>How this board works</summary>Card color = whose move it is. The dark badge is the lead score (0–100). Drag a card to another column, or open it and click a stage. Shortcuts: <kbd>D</kbd> Drop · <kbd>N</kbd> new lead · <kbd>/</kbd> search · drag files or paste anywhere.</details>
   <div class="board-wrap"><div class="board" style="grid-template-columns:${STAGES.map((s, i) => list.some((c) => (c.stage || 'new') === s.k) ? 'minmax(190px, 1.6fr)' : i === STAGES.length - 1 ? 'minmax(130px, 0.9fr)' : 'minmax(112px, 0.7fr)').join(' ')}">
     ${STAGES.map((s, i) => {
       const cs = list.filter((c) => (c.stage || 'new') === s.k).sort(sortCards);
@@ -81,13 +83,16 @@ export function renderBoard(v) {
       </section>`;
     }).join('')}
   </div></div>
+  ${S.customers.length && !list.length ? `<div class="empty" style="margin-top:14px"><h3>${S.customers.filter((c) => F.lost || !c.lost).length} leads are hidden by ${F.q ? `the search "${esc(F.q)}"` : 'a filter'}</h3><button class="btn primary" type="button" id="fReset">Show all leads</button></div>` : ''}
   ${S.customers.length ? '' : `<div class="empty" style="margin-top:14px"><h3>No leads yet</h3><p>Press <b>Drop</b> to paste an email, a call transcript, photos or a layout. Claude builds the customer card for you to check.</p></div>`}`;
 
-  $$('.stat', v).forEach((b) => (b.onclick = () => { F.st = F.st === b.dataset.st ? null : b.dataset.st; saveF(); renderBoard(v); }));
-  $('#fClear', v)?.addEventListener('click', () => { F.st = null; saveF(); renderBoard(v); });
+  $$('.stat', v).forEach((b) => (b.onclick = () => { F.st = F.st === b.dataset.st ? null : b.dataset.st; listOpen = false; renderBoard(v); }));
+  $('#fList', v)?.addEventListener('click', () => { listOpen = !listOpen; renderBoard(v); });
+  $('#fClear', v)?.addEventListener('click', () => { F.st = null; renderBoard(v); });
+  $('#fReset', v)?.addEventListener('click', () => { F.st = null; F.q = ''; saveF(); renderBoard(v); });
   $$('.focus-row', v).forEach((r) => { r.onclick = () => (location.hash = 'c-' + r.dataset.id); r.onkeydown = (e) => { if (e.key === 'Enter') r.onclick(); }; });
   const bq = $('#bq', v);
-  bq.oninput = () => { F.q = bq.value; saveF(); clearTimeout(bq._t); bq._t = setTimeout(() => { renderBoard(v); const x = $('#bq'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); }, 200); };
+  bq.oninput = () => { F.q = bq.value; clearTimeout(bq._t); bq._t = setTimeout(() => { renderBoard(v); const x = $('#bq'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); }, 200); };
   $('#blost', v).onchange = (e) => { F.lost = e.target.checked; saveF(); renderBoard(v); };
   $('#newLead', v)?.addEventListener('click', () => openDrop({ manual: true }));
   $('#payTray', v)?.addEventListener('click', openPayTray);
@@ -148,9 +153,9 @@ function focusPanel(k) {
     acts.forEach((a) => rows.push({ c, title: a.title, due: a.due, who: a.waiting_on }));
   });
   rows.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
-  return `<section class="focus-panel st-${k}" aria-label="${esc(LABEL[k])}">
-    <div class="fh"><span class="dot"></span><h3>${esc(LABEL[k])}: ${rows.length} step${rows.length === 1 ? '' : 's'} on ${leads.length} lead${leads.length === 1 ? '' : 's'}</h3><span class="grow"></span><button class="btn sm" type="button" id="fClear">Show all leads</button></div>
-    ${rows.map((r) => `<div class="focus-row" data-id="${r.c.id}" tabindex="0"><span class="due ${r.due && r.due < t ? 'late' : ''}">${r.due ? (r.due < t ? 'Late · ' : '') + fmtDate(r.due) : 'No date'}</span><span>${esc(r.title)}${r.who && (k === 'due' || (r.who !== 'us' && r.who !== 'customer')) ? ` <span class="chip">${esc(r.who === 'us' ? 'our move' : r.who)}</span>` : ''}</span><span class="who">${esc(r.c.name || 'No name')}</span></div>`).join('') || '<p class="small muted">Nothing here. Nice.</p>'}
+  return `<section class="focus-panel st-${k} ${listOpen ? 'open' : ''}" aria-label="${esc(LABEL[k])}">
+    <div class="fh"><span class="dot"></span><h3>${esc(LABEL[k])}: board shows ${leads.length} lead${leads.length === 1 ? '' : 's'}</h3>${rows.length ? `<button class="btn sm" type="button" id="fList" aria-expanded="${listOpen}">${listOpen ? 'Hide' : 'Show'} ${rows.length} step${rows.length === 1 ? '' : 's'} as a list ${listOpen ? '▴' : '▾'}</button>` : ''}<span class="grow"></span><button class="btn sm" type="button" id="fClear">✕ Show all leads</button></div>
+    ${!listOpen ? '' : '<div class="focus-list">' + (rows.map((r) => `<div class="focus-row" data-id="${r.c.id}" tabindex="0"><span class="due ${r.due && r.due < t ? 'late' : ''}">${r.due ? (r.due < t ? 'Late · ' : '') + fmtDate(r.due) : 'No date'}</span><span>${esc(r.title)}${r.who && (k === 'due' || (r.who !== 'us' && r.who !== 'customer')) ? ` <span class="chip">${esc(r.who === 'us' ? 'our move' : r.who)}</span>` : ''}</span><span class="fwho">${esc(r.c.name || 'No name')}</span></div>`).join('') || '<p class="small muted">Nothing here. Nice.</p>') + '</div>'}
   </section>`;
 }
 
