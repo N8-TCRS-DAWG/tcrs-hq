@@ -1,14 +1,14 @@
 // The Drop: everything enters HQ here. Read → Check → Save.
-import * as D from './data.js?v=20261104144112';
-import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, money0, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js?v=20261104144112';
-import { bumpRevision } from './customer.js?v=20261104144112';
-import { planFromSpec } from './layout.js?v=20261104144112';
-import { addLinesToQuote } from './quote.js?v=20261104144112';
+import * as D from './data.js?v=20261104144601';
+import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, money0, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js?v=20261104144601';
+import { bumpRevision } from './customer.js?v=20261104144601';
+import { planFromSpec } from './layout.js?v=20261104144601';
+import { addLinesToQuote } from './quote.js?v=20261104144601';
 
 let box = null;
 let st = null; // { customerId, files:[{file, type, thumb}], text, instr }
 
-export function openDrop({ customerId = null, manual = false, files = [], text = '' } = {}) {
+export function openDrop({ customerId = null, manual = false, files = [], text = '', auto = false } = {}) {
   close();
   st = { customerId, files: [], text, instr: '' };
   box = document.createElement('div');
@@ -18,6 +18,7 @@ export function openDrop({ customerId = null, manual = false, files = [], text =
   document.body.appendChild(box);
   manual ? drawManual() : drawDrop();
   if (files.length) addFiles(files);
+  if (auto && !manual) { read(true); return; }   // dropped on a card / New lead: skip straight to Claude's read
   if (!manual) setTimeout(() => (text ? $('#dInstr', box) : $('#dText', box))?.focus(), 30);
 }
 export const dropOpen = () => !!box;
@@ -78,7 +79,7 @@ function drawDrop() {
   const opts = [...S.customers].filter((c) => !c.lost).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   box.innerHTML = `<div class="sheet narrow">${head('Drop', 'Photos, layouts, PDFs, scans, emails, call transcripts, notes')}<div class="sheet-b">
     <label class="field"><span class="lbl">Goes to</span>
-      <select id="dTarget"><option value="">Let Claude decide (match or new)</option><option value="__new">New customer</option>
+      <select id="dTarget"><option value="">Let Claude decide (match or new)</option><option value="__new" ${st.customerId === '__new' ? 'selected' : ''}>New customer</option>
       ${opts.map((c) => `<option value="${c.id}" ${c.id === st.customerId ? 'selected' : ''}>${esc(c.name || 'No name')}${c.city ? ' · ' + esc(c.city) : ''}</option>`).join('')}</select></label>
     <div class="dropzone" id="dz" tabindex="0" role="button" aria-label="Add files">
       <h3>Drag files here, or click to choose</h3>

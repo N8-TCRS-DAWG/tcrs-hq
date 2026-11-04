@@ -1,13 +1,14 @@
 // Boot, login, top bar, routing, live refresh.
-import * as D from './data.js?v=20261104144112';
-import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261104144112';
-import { renderCRM } from './crm.js?v=20261104144112';
-import { renderBoard, renderRace, renderTV } from './board.js?v=20261104144112';
-import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261104144112';
-import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261104144112';
-import { renderHelp, renderBrain } from './help.js?v=20261104144112';
+import * as D from './data.js?v=20261104144601';
+import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261104144601';
+import { wireChat } from './chat.js?v=20261104144601';
+import { renderCRM } from './crm.js?v=20261104144601';
+import { renderBoard, renderRace, renderTV } from './board.js?v=20261104144601';
+import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261104144601';
+import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261104144601';
+import { renderHelp, renderBrain } from './help.js?v=20261104144601';
 
-import { BUILD } from './version.js?v=20261104144112';
+import { BUILD } from './version.js?v=20261104144601';
 const app = $('#app');
 
 /* Updates: if a newer HQ is published, reload (TV) or offer a one-click reload. */
@@ -57,6 +58,7 @@ async function boot() {
   D.onChange(onData);
   D.startLive();
   checkVersion();
+  wireChat();
   if (S.role !== 'tv') { wireAnywhere(); wireSaveState(); }
   window.addEventListener('hashchange', route);
   // TV: click = full screen; Esc leaves TV mode (except for the TV login)
@@ -152,7 +154,11 @@ function wireAnywhere() {
     veil = document.createElement('div');
     veil.className = 'drag-veil';
     const c = S.customers.find((x) => x.id === currentCustomerId());
-    veil.innerHTML = `<div><b>Drop to add${c ? ' to ' + esc(c.name || 'this customer') : ''}</b><span>Photos, layouts, PDFs, scans, emails</span></div>`;
+    const onBoard = !c && ['board', 'race'].includes(viewKey());
+    if (onBoard) veil.classList.add('lite');
+    veil.innerHTML = onBoard
+      ? '<div><b>Drop on a card to update that customer</b><span>Drop on <b>New lead</b> to start a new lead · anywhere else: Claude decides</span></div>'
+      : `<div><b>Drop to add${c ? ' to ' + esc(c.name || 'this customer') : ''}</b><span>Photos, layouts, PDFs, scans, emails</span></div>`;
     document.body.appendChild(veil);
   };
   const hide = () => { veil?.remove(); veil = null; depth = 0; };
@@ -162,7 +168,7 @@ function wireAnywhere() {
   window.addEventListener('drop', (e) => {
     const files = [...(e.dataTransfer?.files || [])];
     hide();
-    if (!files.length) return;
+    if (!files.length || e.hqHandled) return;
     e.preventDefault();
     if (dropOpen()) addToDrop(files); else openDrop({ customerId: currentCustomerId(), files });
   });

@@ -1,8 +1,8 @@
 // Board (kanban) and Race (glance / office TV).
-import * as D from './data.js?v=20261104144112';
-import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104144112';
-import { moveStage } from './customer.js?v=20261104144112';
-import { openDrop } from './drop.js?v=20261104144112';
+import * as D from './data.js?v=20261104144601';
+import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104144601';
+import { moveStage } from './customer.js?v=20261104144601';
+import { openDrop } from './drop.js?v=20261104144601';
 
 const F = { st: null, q: '', lost: false };
 // Only "Show lost" is remembered. Search and bubble filters reset on each visit so the board always opens full.
@@ -103,10 +103,12 @@ export function renderBoard(v) {
     el.ondragstart = (e) => { e.dataTransfer.setData('text/plain', el.dataset.id); el.classList.add('dragging'); };
     el.ondragend = () => el.classList.remove('dragging');
   });
+  wireFileDrops(v, '.card', '.col');
   $$('.col', v).forEach((col) => {
-    col.ondragover = (e) => { e.preventDefault(); col.classList.add('over'); };
+    col.ondragover = (e) => { e.preventDefault(); if (!hasFiles(e)) col.classList.add('over'); };
     col.ondragleave = () => col.classList.remove('over');
     col.ondrop = (e) => {
+      if (hasFiles(e)) return;
       e.preventDefault(); col.classList.remove('over');
       const c = S.customers.find((x) => x.id === e.dataTransfer.getData('text/plain'));
       if (c && c.stage !== col.dataset.stage) moveStage(c, col.dataset.stage);
@@ -138,6 +140,32 @@ function openPayTray() {
       row.remove(); toast('Payment applied.');
     };
     row.querySelector('[data-ignore]').onclick = async () => { await D.update('payments', pid, { status: 'ignored' }); row.remove(); toast('Ignored.'); };
+  });
+}
+
+/* Files or text dropped on a card update that customer; on the New lead column they start a new lead. */
+const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+function wireFileDrops(v, cardSel, colSel) {
+  if (!canWrite()) return;
+  const hot = (el, on) => el.classList.toggle('filehot', on);
+  $$(cardSel, v).forEach((el) => {
+    el.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); hot(el, true); });
+    el.addEventListener('dragleave', () => hot(el, false));
+    el.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); e.hqHandled = true; hot(el, false);
+      openDrop({ customerId: el.dataset.id, files: [...e.dataTransfer.files], auto: true });
+    });
+  });
+  $$(colSel, v).forEach((col, i) => {
+    const isNew = i === 0;
+    col.addEventListener('dragover', (e) => { if (!hasFiles(e) || e.target.closest(cardSel)) return; e.preventDefault(); if (isNew) hot(col, true); });
+    col.addEventListener('dragleave', (e) => { if (!col.contains(e.relatedTarget)) hot(col, false); });
+    col.addEventListener('drop', (e) => {
+      if (!hasFiles(e) || e.target.closest(cardSel)) return;
+      e.preventDefault(); e.hqHandled = true; hot(col, false);
+      openDrop({ customerId: isNew ? '__new' : null, files: [...e.dataTransfer.files], auto: true });
+    });
   });
 }
 
@@ -201,7 +229,7 @@ export function renderRace(v, tv) {
   </div></div>
   ${tv ? '<p class="small muted" style="margin-top:10px">Updates live. The last column shows jobs finished in the last 30 days.</p>' : ''}`;
   if (!tv) fitView(v);
-  if (!tv) $$('.car', v).forEach((el) => (el.onclick = () => (location.hash = 'c-' + el.dataset.id)));
+  if (!tv) { $$('.car', v).forEach((el) => (el.onclick = () => (location.hash = 'c-' + el.dataset.id))); if (canWrite()) wireFileDrops(v, '.car', '.rcol'); }
   clearInterval(clockTimer);
   if (tv) {
     const tick = () => { const el = $('#clock'); if (el) el.textContent = new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
