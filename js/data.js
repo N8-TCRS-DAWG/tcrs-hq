@@ -161,6 +161,16 @@ export async function fileBlob(path) {
 }
 
 /* ───────── Claude ───────── */
+export async function invite({ email, name, role }) {
+  if (isDemo) throw new Error('Invites work once HQ is connected to Supabase.');
+  const redirect = location.origin + location.pathname;
+  const { data, error } = await sb.functions.invoke('hq-admin', { body: { email, name, role, redirect } });
+  if (error) { let m = error.message; try { const j = await error.context.json(); if (j?.error) m = j.error; } catch {} throw new Error(m); }
+  if (data?.error) throw new Error(data.error);
+  emit('profiles');
+  return data;
+}
+
 export async function ai({ system, content, model = 'default', max_tokens = 6000 }) {
   if (typeof window.__HQ_MOCK_AI === 'function') return window.__HQ_MOCK_AI({ system, content, model, max_tokens }); // test hook
   if (isDemo) throw new Error('Claude reading works once HQ is connected to Supabase. Demo mode fills the Check screen by hand.');

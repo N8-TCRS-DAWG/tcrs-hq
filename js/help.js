@@ -179,9 +179,27 @@ function settingsTab(el, admin) {
 
 function team(el, admin) {
   el.innerHTML = `<section class="panel"><h3>Team logins</h3>
-    <p class="small muted" style="margin:4px 0 8px">Add people in Supabase → Authentication → Users → Add user (tick "Auto confirm"). They show up here; set their role. <b>admin</b>: everything incl. settings. <b>sales</b>: everything else. <b>tv</b>: read-only race board for the office screen.</p>
+    <p class="small muted" style="margin:4px 0 8px"><b>admin</b>: everything, including settings and roles. <b>sales</b>: everything else. <b>tv</b>: view-only office screen.</p>
+    ${admin ? `<form class="row" id="invF" style="margin:6px 0 12px;padding:10px;border:1.5px dashed var(--gold);border-radius:10px">
+      <b>Invite a teammate</b>
+      <input type="email" id="invE" placeholder="email@tcremodelingsupply.com" required class="grow" style="min-width:220px">
+      <input type="text" id="invN" placeholder="Name (e.g. Lee)" style="width:150px">
+      <select id="invR"><option value="sales">sales</option><option value="admin">admin</option><option value="tv">tv</option></select>
+      <button class="btn primary" type="submit">Send invite</button>
+      <span class="small muted" style="flex-basis:100%">They get an email from Supabase, click the link, and choose their own password in HQ.</span>
+    </form>` : ''}
     <table class="simple"><thead><tr><th>Name</th><th>Role</th></tr></thead><tbody>
     ${S.profiles.map((p) => `<tr data-id="${p.id}"><td><input type="text" data-k="name" value="${esc(p.name)}" ${admin ? '' : 'disabled'}></td><td><select data-k="role" ${admin ? '' : 'disabled'}>${['admin', 'sales', 'tv'].map((r) => `<option ${p.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td></tr>`).join('')}
     </tbody></table></section>`;
   $$('tr[data-id] [data-k]', el).forEach((i) => (i.onchange = () => D.update('profiles', i.closest('tr').dataset.id, { [i.dataset.k]: i.value })));
+  $('#invF', el)?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button'); btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const r = await D.invite({ email: $('#invE', el).value.trim(), name: $('#invN', el).value.trim(), role: $('#invR', el).value });
+      toast(`Invite sent to ${r.email} (${r.role}).`);
+      e.target.reset();
+    } catch (err) { toast('Invite failed: ' + err.message); }
+    btn.disabled = false; btn.textContent = 'Send invite';
+  });
 }

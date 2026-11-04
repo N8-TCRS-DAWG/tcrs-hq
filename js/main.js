@@ -9,11 +9,15 @@ import { renderHelp, renderBrain } from './help.js';
 const app = $('#app');
 const VIEWS = { board: 'Board', race: 'Race', help: 'Help & SOPs', brain: 'Prices & partners' };
 
+const AUTH_LINK = (/type=(invite|recovery|signup|magiclink)/.exec(location.hash) || [])[1] || null;
+const AUTH_ERR = /error_description=([^&]+)/.exec(location.hash)?.[1];
 async function boot() {
   let res;
   try { res = await D.init(); } catch (e) { app.innerHTML = `<div class="login"><h2>Can't start HQ</h2><p>${esc(e.message)}</p></div>`; return; }
   S.demo = res.demo;
+  if (AUTH_ERR) { renderLogin(); const m = document.getElementById('msg'); if (m) m.textContent = decodeURIComponent(AUTH_ERR.replace(/\+/g, ' ')) + ' — ask an admin to send a new invite, or use "Forgot password".'; history.replaceState(null, '', location.pathname); return; }
   if (!res.user) return renderLogin();
+  if (AUTH_LINK === 'invite' || AUTH_LINK === 'recovery') { history.replaceState(null, '', location.pathname); return renderSetPassword(res.user, AUTH_LINK); }
   S.me = res.user;
   await loadAll();
   const prof = S.profiles.find((p) => p.id === S.me.id);
@@ -175,6 +179,25 @@ function whoMenu() {
     const pw = b.querySelector('#newPw').value;
     if (pw.length < 8) return toast('Use at least 8 characters.');
     try { await D.setPassword(pw); toast('Password changed.'); b.remove(); } catch (e) { toast(e.message); }
+  };
+}
+
+function renderSetPassword(user, kind) {
+  app.innerHTML = `<form class="login" id="pwForm">
+    <img src="img/logo-cream.png" alt="Twin Cities Remodeling Supply">
+    <h2>${kind === 'invite' ? 'Welcome to TCRS HQ' : 'Choose a new password'}</h2>
+    <p class="small muted">${esc(user.email)}</p>
+    <label class="field"><span class="lbl">New password (8+ characters)</span><input type="password" id="np1" autocomplete="new-password" required minlength="8"></label>
+    <label class="field"><span class="lbl">Type it again</span><input type="password" id="np2" autocomplete="new-password" required minlength="8"></label>
+    <button class="btn primary" type="submit">Save password and open HQ</button>
+    <p class="small muted" id="msg" role="status"></p>
+  </form>`;
+  $('#pwForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const a = $('#np1').value, b = $('#np2').value;
+    if (a.length < 8) { $('#msg').textContent = 'Use at least 8 characters.'; return; }
+    if (a !== b) { $('#msg').textContent = 'The two passwords don\'t match.'; return; }
+    try { await D.setPassword(a); location.hash = ''; location.reload(); } catch (err) { $('#msg').textContent = err.message; }
   };
 }
 
