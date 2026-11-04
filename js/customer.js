@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261104141406';
+import * as D from './data.js?v=20261104141955';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName,
-} from './core.js?v=20261104141406';
-import { openDrop } from './drop.js?v=20261104141406';
-import { renderLayout } from './layout.js?v=20261104141406';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261104141406';
+} from './core.js?v=20261104141955';
+import { openDrop } from './drop.js?v=20261104141955';
+import { renderLayout } from './layout.js?v=20261104141955';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261104141955';
 
 let curId = null;
 let tab = 'overview';
@@ -175,36 +175,18 @@ function wireNext(c) {
   }
 }
 
-/* ───────── stage moves with gates ───────── */
+/* ───────── stage moves (any order) ───────── */
 export function moveStage(c, to) {
-  if (!canWrite()) return;
-  const back = stageIdx(to) < stageIdx(c.stage);
-  const miss = back ? [] : gateMissing(c, to);
-  const go = async (forced) => {
-    const from = c.stage;
-    const patch = { stage: to };
-    if (to === 'paid' && !c.paid?.at && c.paid?.amount) patch.paid = { ...c.paid, at: c.paid.at || new Date().toISOString() };
-    await patchCustomer(c, patch);
-    await logEvent(c.id, 'system', `Moved ${STAGES[stageIdx(from)].label} → ${STAGES[stageIdx(to)].label}${forced ? ' (moved past missing items)' : ''}`, forced ? 'Missing: ' + miss.join('; ') : null);
+  if (!canWrite() || c.stage === to) return;
+  // Any order is fine: projects are circuitous. Missing items are a reminder, never a block.
+  const miss = gateMissing(c, to);
+  const from = c.stage;
+  const patch = { stage: to };
+  if (to === 'paid' && !c.paid?.at && c.paid?.amount) patch.paid = { ...c.paid, at: c.paid.at || new Date().toISOString() };
+  patchCustomer(c, patch).then(() => {
+    logEvent(c.id, 'system', `Moved ${STAGES[stageIdx(from)].label} → ${STAGES[stageIdx(to)].label}`, miss.length ? 'Not on file yet: ' + miss.join('; ') : null);
     if (to === 'paid') { const q = custQuote(c.id); if (q) learnFromQuote(q, c, true); }
-    toast(`Moved to ${STAGES[stageIdx(to)].label}.`, () => patchCustomer(c, { stage: from }));
-  };
-  if (!miss.length) return go(false);
-  modal(`<h2>Before "${esc(STAGES[stageIdx(to)].label)}"</h2>`, `
-    <p>These are missing:</p>
-    <ul>${miss.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
-    <p class="small muted">Fix them first, or move anyway. Moving anyway is noted in the customer's history.</p>
-    <div class="row"><button class="btn primary" type="button" data-fix>Fix it</button><button class="btn" type="button" data-force>Move anyway</button></div>`,
-  (box, close) => {
-    $('[data-fix]', box).onclick = () => {
-      close();
-      location.hash = 'c-' + c.id;
-      setTimeout(() => {
-        tab = miss.some((m) => m.includes('estimate') || m.includes('quote') || m.includes('Quote')) ? 'quote' : miss.some((m) => /deposit|Payment|date/.test(m)) ? 'money' : 'overview';
-        refreshCustomer();
-      }, 50);
-    };
-    $('[data-force]', box).onclick = () => { close(); go(true); };
+    toast(`Moved to ${STAGES[stageIdx(to)].label}.${miss.length ? ' Not on file yet: ' + miss.slice(0, 2).join('; ') + (miss.length > 2 ? '…' : '') : ''}`, () => patchCustomer(c, { stage: from }));
   });
 }
 
@@ -437,7 +419,7 @@ function moneyTab(el, c) {
     toast('Saved.');
     const got = (n(prev.qb) || 0) + other;
     const owed = t && t.price ? t.total : (jobV || c.est_price || 0);
-    if (c.stage !== 'paid' && owed && got >= owed - 0.01) modal('<h2>Move to Paid?</h2>', '<p>Paid in full. Move this job across the finish line?</p><div class="row"><button class="btn primary" type="button" id="mp">Move to Paid 🏁</button><button class="btn" type="button" id="np">Not yet</button></div>',
+    if (stageIdx(c.stage) < stageIdx('paid') && owed && got >= owed - 0.01) modal('<h2>Move to Paid?</h2>', '<p>Paid in full. Move this job to Paid?</p><div class="row"><button class="btn primary" type="button" id="mp">Move to Paid</button><button class="btn" type="button" id="np">Not yet</button></div>',
       (box, close) => { $('#mp', box).onclick = () => { close(); moveStage(c, 'paid'); }; $('#np', box).onclick = close; });
   };
   $$('[data-unpay]', el).forEach((b) => (b.onclick = async () => {
@@ -452,4 +434,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261104141406';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261104141955';

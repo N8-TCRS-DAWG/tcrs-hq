@@ -1,5 +1,5 @@
 // Shared state, helpers and business rules.
-import * as D from './data.js?v=20261104141406';
+import * as D from './data.js?v=20261104141955';
 
 export const S = {
   customers: [], actions: [], logs: [], files: [], sizes: [], layouts: [], quotes: [],
@@ -14,10 +14,12 @@ export const STAGES = [
   { k: 'design', label: 'Design ($250 paid)', short: 'Design' },
   { k: 'quote', label: 'Quote sent', short: 'Quote' },
   { k: 'accepted', label: 'Accepted', short: 'Accepted' },
-  { k: 'ordered', label: 'Ordered / scheduled', short: 'Ordered' },
-  { k: 'installed', label: 'Delivered / installed', short: 'Installed' },
   { k: 'paid', label: 'Paid', short: 'Paid' },
+  { k: 'ordered', label: 'Ordered', short: 'Ordered' },
+  { k: 'installed', label: 'Delivery + install', short: 'Deliver/install' },
 ];
+// Open pipeline = leads not yet paid. Paid and later = money in.
+export const isPrePaid = (c) => stageIdx(c.stage) < STAGES.findIndex((s) => s.k === 'paid');
 export const stageIdx = (k) => Math.max(0, STAGES.findIndex((s) => s.k === k));
 export const PRODUCTS = ['Cabinets', 'Countertops', 'Flooring', 'Appliances', 'Doors & trim', 'Garage doors', 'Sauna / plunge', 'Furniture', 'Other'];
 export const SERVICES = ['Delivery', 'Installation', 'Design / layout', 'Removal'];
@@ -93,7 +95,9 @@ export function status(c) {
   if (c.status_override) return { k: c.status_override, why: 'Set by hand' };
   const open = openActions(c.id);
   const t = todayISO();
-  if (c.stage === 'paid' && !open.length) return { k: 'none', why: 'Paid — done' };
+  if (c.stage === 'installed' && !open.length) return { k: 'none', why: 'Done' };
+  if (c.stage === 'paid' && !open.length) return { k: 'red', why: 'Paid — place the order', who: 'us' };
+  if (c.stage === 'ordered' && !open.length) return { k: 'yellow', why: 'Ordered — waiting on delivery date', who: 'supplier' };
   if (open.length) {
     const us = open.find((a) => a.waiting_on === 'us');
     if (us) return { k: 'red', why: us.title, who: 'us' };
@@ -191,20 +195,15 @@ export function keyDates(c) {
   return out;
 }
 
-/* ───────── stage gates (poka-yoke) ───────── */
+/* ───────── soft reminders when moving (never blocks: bare minimum is contact + sketch + accepted quote) ───────── */
 export function gateMissing(c, toKey) {
   const miss = [];
   const q = custQuote(c.id);
-  const lines = (q?.sections || []).reduce((a, s) => a + (s.options || []).reduce((b, o) => b + (o.lines || []).length, 0), 0);
   const ti = stageIdx(toKey);
-  if (ti >= 1 && !(c.name && (c.phone || c.email))) miss.push('Name and a phone or email');
-  if (ti >= 2 && !(c.products || []).length) miss.push('At least one product');
-  if (ti >= 2 && !lines) miss.push('An estimate with at least one line');
-  if (toKey === 'design' && !(c.data?.deposit?.paidAt || c.data?.deposit?.waived)) miss.push('$250 design deposit marked paid (or waived)');
-  if (ti >= 4 && !(q && q.mode === 'quote')) miss.push('A final quote (switch the estimate to Quote mode)');
-  if (ti >= 5 && !(q && q.status === 'accepted')) miss.push('Quote marked accepted');
-  if (toKey === 'ordered' && !(c.delivery_date || c.install_date)) miss.push('A delivery or install date');
-  if (toKey === 'paid' && !(Number(c.paid?.amount) > 0)) miss.push('A payment recorded (QuickBooks syncs it; cash/check/Clover go on Money & dates)');
+  if (ti >= stageIdx('quote') && !(c.phone || c.email)) miss.push('phone or email');
+  if (ti >= stageIdx('accepted') && !(q && q.status === 'accepted')) miss.push('accepted quote');
+  if (ti >= stageIdx('paid') && !(Number(c.paid?.amount) > 0)) miss.push('payment amount');
+  if (toKey === 'installed' && !(c.delivery_date || c.install_date)) miss.push('delivery / install date');
   return miss;
 }
 

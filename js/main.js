@@ -1,12 +1,12 @@
 // Boot, login, top bar, routing, live refresh.
-import * as D from './data.js?v=20261104141406';
-import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261104141406';
-import { renderBoard, renderRace, renderTV } from './board.js?v=20261104141406';
-import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261104141406';
-import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261104141406';
-import { renderHelp, renderBrain } from './help.js?v=20261104141406';
+import * as D from './data.js?v=20261104141955';
+import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261104141955';
+import { renderBoard, renderRace, renderTV } from './board.js?v=20261104141955';
+import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261104141955';
+import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261104141955';
+import { renderHelp, renderBrain } from './help.js?v=20261104141955';
 
-import { BUILD } from './version.js?v=20261104141406';
+import { BUILD } from './version.js?v=20261104141955';
 const app = $('#app');
 
 /* Updates: if a newer HQ is published, reload (TV) or offer a one-click reload. */

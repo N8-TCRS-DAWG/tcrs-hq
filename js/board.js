@@ -1,8 +1,8 @@
 // Board (kanban) and Race (glance / office TV).
-import * as D from './data.js?v=20261104141406';
-import { S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104141406';
-import { moveStage } from './customer.js?v=20261104141406';
-import { openDrop } from './drop.js?v=20261104141406';
+import * as D from './data.js?v=20261104141955';
+import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104141955';
+import { moveStage } from './customer.js?v=20261104141955';
+import { openDrop } from './drop.js?v=20261104141955';
 
 const F = { st: null, q: '', lost: false };
 // Only "Show lost" is remembered. Search and bubble filters reset on each visit so the board always opens full.
@@ -56,7 +56,7 @@ export function renderBoard(v) {
   const list = visible();
   const counts = { red: 0, yellow: 0, green: 0 };
   S.customers.filter((c) => !c.lost).forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
-  const openVal = S.customers.filter((c) => !c.lost && c.stage !== 'paid').reduce((a, c) => a + value(c), 0);
+  const openVal = S.customers.filter((c) => !c.lost && isPrePaid(c)).reduce((a, c) => a + value(c), 0);
   const collected = S.customers.filter((c) => !c.lost).reduce((a, c) => a + received(c), 0);
   const feesOwed = S.quotes.filter((q) => q.status === 'accepted').reduce((a, q) => a + referralLines(q).filter((l) => l.feeStatus !== 'received').length, 0);
 
@@ -186,7 +186,7 @@ export function renderRace(v, tv) {
   <div class="race-wrap"><div class="race">
     ${STAGES.map((s, i) => {
       let cs = list.filter((c) => (c.stage || 'new') === s.k);
-      if (s.k === 'paid') cs = cs.filter((c) => (c.paid?.at || c.updated_at) >= thirty);
+      if (s.k === 'installed') cs = cs.filter((c) => openActions(c.id).length || (c.updated_at || '') >= thirty);
       cs.sort((a, b) => (a.first_contact || '').localeCompare(b.first_contact || ''));
       return `<div class="rcol ${cs.length ? '' : 'empty'}"><div class="lane-h ${i === STAGES.length - 1 ? 'fin' : ''}">${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.short)} <span class="num muted">${cs.length}</span></div><div class="lane">${cs.map((c) => {
         const st = status(c);
@@ -199,7 +199,7 @@ export function renderRace(v, tv) {
       }).join('')}</div></div>`;
     }).join('')}
   </div></div>
-  ${tv ? '<p class="small muted" style="margin-top:10px">Updates live. Paid column shows the last 30 days.</p>' : ''}`;
+  ${tv ? '<p class="small muted" style="margin-top:10px">Updates live. The last column shows jobs finished in the last 30 days.</p>' : ''}`;
   if (!tv) fitView(v);
   if (!tv) $$('.car', v).forEach((el) => (el.onclick = () => (location.hash = 'c-' + el.dataset.id)));
   clearInterval(clockTimer);
@@ -216,7 +216,7 @@ let wakeLock = null;
 export function renderTV(v) {
   const t = todayISO();
   const live = S.customers.filter((c) => !c.lost);
-  const open = live.filter((c) => c.stage !== 'paid');
+  const open = live.filter((c) => isPrePaid(c));
   const counts = { red: 0, yellow: 0, green: 0 };
   open.forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
   const month = t.slice(0, 7);
@@ -243,7 +243,7 @@ export function renderTV(v) {
     <section class="tv-race" style="grid-template-columns:${STAGES.map((s) => live.some((c) => (c.stage || 'new') === s.k) ? 'minmax(0, 1fr)' : 'minmax(0, 0.5fr)').join(' ')}">
       ${STAGES.map((s, i) => {
         let cs = live.filter((c) => (c.stage || 'new') === s.k);
-        if (s.k === 'paid') cs = cs.filter((c) => (c.paid?.at || c.updated_at || '') >= thirty.slice(0, 10));
+        if (s.k === 'installed') cs = cs.filter((c) => openActions(c.id).length || (c.updated_at || '') >= thirty.slice(0, 10));
         cs.sort((a, b) => (a.first_contact || '').localeCompare(b.first_contact || ''));
         const more = Math.max(0, cs.length - 6);
         return `<div class="tv-lane ${i === STAGES.length - 1 ? 'fin' : ''}"><div class="tv-lh">${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.short)} <b>${cs.length}</b></div>
