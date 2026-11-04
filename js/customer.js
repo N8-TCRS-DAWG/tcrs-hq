@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261104141955';
+import * as D from './data.js?v=20261104144112';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName,
-} from './core.js?v=20261104141955';
-import { openDrop } from './drop.js?v=20261104141955';
-import { renderLayout } from './layout.js?v=20261104141955';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261104141955';
+} from './core.js?v=20261104144112';
+import { openDrop } from './drop.js?v=20261104144112';
+import { renderLayout } from './layout.js?v=20261104144112';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261104144112';
 
 let curId = null;
 let tab = 'overview';
@@ -211,7 +211,12 @@ function overview(el, c) {
   const sc = score(c);
   const rv = revisionInfo(c);
   const logs = custLogs(c.id);
-  el.innerHTML = `<div class="two">
+  const ch = c.data?.changes || [];
+  el.innerHTML = `${c.data?.needsReview || ch.length ? `<section class="panel autocheck">
+      <div class="row"><h3 class="grow">🤖 Check what email added</h3><button class="btn sm primary" type="button" id="acOk">Looks right</button></div>
+      ${c.data?.needsReview ? `<p class="small">Claude made this lead from ${esc(c.data?.auto?.src || 'email')} and wasn't fully sure. Check the name, contact info and products.</p>` : ''}
+      ${ch.map((x, i) => `<div class="row small" style="gap:8px"><span><b>${esc(x.field.replace('_', ' '))}</b>: on file "${esc(x.old)}", email says "${esc(x.new)}"</span>${['phone', 'email', 'address'].includes(x.field) ? `<button class="btn sm" type="button" data-use="${i}">Use new</button>` : '<span class="muted">(updated)</span>'}</div>`).join('')}
+    </section>` : ''}<div class="two">
     <div style="display:flex;flex-direction:column;gap:14px;min-width:0">
       <section class="panel">
         <div class="row"><h3 class="grow">TL;DR</h3><span class="small muted">Claude updates this on every drop. Edit freely.</span></div>
@@ -266,6 +271,8 @@ function overview(el, c) {
     </div></div>`;
   wireFields(el, c);
   $('#tldr', el)?.addEventListener('change', (e) => patchCustomer(c, { tldr: e.target.value }));
+  $('#acOk', el)?.addEventListener('click', () => { const d = { ...(c.data || {}) }; delete d.needsReview; delete d.changes; patchCustomer(c, { data: d }); });
+  $$('[data-use]', el).forEach((b) => (b.onclick = () => { const x = ch[Number(b.dataset.use)]; const d = { ...(c.data || {}), changes: ch.filter((_, i) => i !== Number(b.dataset.use)) }; patchCustomer(c, { [x.field]: x.new, data: d }); }));
   $$('[data-prod]', el).forEach((b) => (b.onclick = () => toggleArr(c, 'products', b.dataset.prod)));
   $$('[data-serv]', el).forEach((b) => (b.onclick = () => toggleArr(c, 'services', b.dataset.serv)));
   $$('[data-conv]', el).forEach((b) => (b.onclick = () => patchCustomer(c, { conversion: c.conversion === +b.dataset.conv ? null : +b.dataset.conv })));
@@ -434,4 +441,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261104141955';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261104144112';

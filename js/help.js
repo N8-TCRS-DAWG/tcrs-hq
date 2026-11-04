@@ -1,6 +1,6 @@
 // Help & SOPs, and "Prices & partners" (what HQ learns from + settings).
-import * as D from './data.js?v=20261104141955';
-import { S, STAGES, PRODUCTS, esc, $, $$, n, toast, canWrite, settings, DEFAULT_SETTINGS, money, fmtDate } from './core.js?v=20261104141955';
+import * as D from './data.js?v=20261104144112';
+import { S, STAGES, PRODUCTS, esc, $, $$, n, toast, canWrite, settings, DEFAULT_SETTINGS, money, fmtDate } from './core.js?v=20261104144112';
 
 const FORMS = 'https://script.google.com/macros/s/AKfycby_jpUiOvp36ytos3qfvdOpeaG_xvmkWuZLqGlufbKH9vlwi36wJmW0ZbyqJmWY6iix/exec';
 export const STARTER_DOCS = [
@@ -166,12 +166,15 @@ function settingsTab(el, admin) {
       ${['conversion', 'budget', 'repeat', 'intake'].map((k) => `<label class="field"><span class="lbl">${{ conversion: 'Feels likely to buy', budget: 'Budget / job size', repeat: 'Repeat / reliable', intake: 'Intake quality' }[k]}</span><input type="text" data-w="${k}" value="${st.scoreWeights[k]}" ${admin ? '' : 'disabled'} style="width:90px"></label>`).join('')}</div>
     <h3 style="margin-top:14px">On customer documents</h3><div class="fields" style="margin-top:8px">
       ${['name', 'address', 'phone', 'email', 'web'].map((k) => `<label class="field"><span class="lbl">${k}</span><input type="text" data-co="${k}" value="${esc(st.company[k])}" ${admin ? '' : 'disabled'}></label>`).join('')}</div>
+    <h3 style="margin-top:14px">Inbox sweep (9am + 9pm)</h3>
+    <label class="row small" style="gap:8px;margin-top:6px"><input type="checkbox" id="sAuto" ${st.sweep?.autoSend ? 'checked' : ''} ${admin ? '' : 'disabled'}> Auto-send the first reply to brand-new email leads (thanks + intake questions). Off = saved as a Gmail draft for you to send.</label>
     ${admin ? '<button class="btn primary" type="button" id="sSave" style="margin-top:12px">Save settings</button>' : ''}</section>`;
   $('#sSave', el)?.addEventListener('click', async () => {
     const data = { ...settings() };
     $$('[data-s]', el).forEach((i) => (data[i.dataset.s] = n(i.value) ?? DEFAULT_SETTINGS[i.dataset.s]));
     data.scoreWeights = {}; $$('[data-w]', el).forEach((i) => (data.scoreWeights[i.dataset.w] = n(i.value) ?? 25));
     data.company = {}; $$('[data-co]', el).forEach((i) => (data.company[i.dataset.co] = i.value.trim()));
+    data.sweep = { ...(data.sweep || {}), autoSend: $('#sAuto', el).checked };
     await D.upsert('settings', { id: 'main', data });
     toast('Settings saved.');
   });

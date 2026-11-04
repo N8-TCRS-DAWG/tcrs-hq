@@ -448,3 +448,31 @@ body.tv main { padding: 18px 26px; height: 100vh; }
   .strip .stat b { font-size: 14px; }
   .strip #bq { flex: 1 1 140px; width: auto; }
 }
+
+/* ── CRM ── */
+.crm-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.crm-f { display: flex; gap: 4px; flex-wrap: wrap; }
+.crm-f button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 11px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ink); }
+.crm-f button.on { background: var(--forest); color: #fff; border-color: var(--forest); }
+.crm-f .num { opacity: .7; font-weight: 500; }
+.crm-top #cq { flex: 1 1 220px; max-width: 360px; }
+.crm-sweep { margin: 4px 0 10px; }
+.crm-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--card); }
+table.crm { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.crm th { text-align: left; font-size: 12px; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--card); }
+table.crm th button { all: unset; cursor: pointer; }
+table.crm th button.on { color: var(--ink); font-weight: 700; }
+table.crm td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; max-width: 260px; }
+table.crm td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.crm tbody tr { cursor: pointer; }
+table.crm tbody tr:hover { background: var(--sunk); }
+.clamp1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; }
+.chip.warn { background: var(--red-bg); color: var(--red); }
+.autocheck { border: 2px solid var(--gold); margin-bottom: 14px; display: flex; flex-direction: column; gap: 6px; }
+@media (max-width: 700px) {
+  table.crm thead { display: none; }
+  table.crm, table.crm tbody, table.crm tr, table.crm td { display: block; width: 100%; max-width: none; }
+  table.crm tr { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.crm td { border: 0; padding: 1px 0; text-align: left !important; }
+  table.crm td:nth-child(n+7) { display: none; }
+}
