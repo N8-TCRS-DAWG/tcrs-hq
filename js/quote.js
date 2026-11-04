@@ -119,21 +119,22 @@ function projBar(t) {
 function section(s, si, st, ro) {
   const opt = s.options.find((o) => o.id === s.chosen) || s.options[0];
   const ot = optionCalc(opt, st);
-  return `<section class="qsec" data-si="${si}">
+  const showList = s.showList || s.options.some((o) => o.lines.some((l) => l.list != null || l.disc != null));
+  return `<section class="qsec ${showList ? '' : 'nolist'}" data-si="${si}">
     <div class="qsec-h">
       <h3>${esc(s.product)}</h3>
       <div class="opts">${s.options.map((o) => { const x = optionCalc(o, st); return `<button type="button" class="chip pick ${o.id === s.chosen ? 'on' : ''}" data-opt="${o.id}" title="In the total">${esc(o.name)} · ${money0(x.price)}</button>`; }).join('')}
       ${ro ? '' : `<button type="button" class="chip pick" data-addopt>+ Option</button>`}</div>
       <span class="grow"></span>
-      ${ro ? '' : `<input type="text" data-optname value="${esc(opt.name)}" style="width:140px" aria-label="Option name"><button class="btn ghost sm" type="button" data-dupopt>Copy option</button>${s.options.length > 1 ? '<button class="btn ghost sm danger" type="button" data-delopt>Delete option</button>' : ''}<button class="btn ghost sm danger" type="button" data-delsec>Remove section</button>`}
+      ${ro ? '' : `<input type="text" data-optname value="${esc(opt.name)}" style="width:140px" aria-label="Option name"><button class="btn ghost sm" type="button" data-dupopt>Copy option</button>${s.options.length > 1 ? '<button class="btn ghost sm danger" type="button" data-delopt>Delete option</button>' : ''}<button class="btn ghost sm" type="button" data-listtog title="Show or hide supplier list price + discount columns">${showList ? 'Hide' : 'Show'} list $ / discount</button><button class="btn ghost sm danger" type="button" data-delsec>Remove section</button>`}
     </div>
     <div class="tbl-wrap"><table class="lines"><thead><tr>
       <th style="width:96px">Type</th><th style="width:92px">Deal</th><th>Item (customer sees)</th><th style="width:60px">Qty</th><th style="width:58px">Unit</th>
-      <th class="cost" style="width:78px">List $</th><th class="cost" style="width:58px">Disc %</th><th class="cost" style="width:86px">COST /unit</th>
+      <th class="cost c-list" style="width:78px" title="Supplier list price per unit">List $</th><th class="cost c-list" style="width:58px" title="Your supplier discount off list">Disc %</th><th class="cost" style="width:86px">COST /unit</th>
       <th style="width:64px">Markup %</th><th class="price" style="width:90px">PRICE /unit</th>
       <th class="cost" style="width:88px">COST total</th><th class="price" style="width:92px">PRICE total</th><th style="width:120px">Partner</th><th style="width:34px"></th>
     </tr></thead><tbody>
-      ${opt.lines.map((l, li) => lineRow(l, li, st, ro)).join('')}
+      ${opt.lines.map((l, li) => lineRow(l, li, st, ro)).join('') || `<tr><td colspan="14" class="small muted" style="padding:10px">No lines yet. Add a material, delivery or installation line below${ro ? '' : ', or use ✨ Draft lines with Claude'}.</td></tr>`}
     </tbody></table></div>
     ${ro ? '' : `<div class="row" style="padding:8px 12px">${KINDS.map(([k, lab]) => `<button class="btn sm" type="button" data-addl="${k}">+ ${lab}</button>`).join('')}
       <button class="btn sm" type="button" data-addref>+ Referral (partner bills customer)</button>
@@ -150,6 +151,7 @@ function secTot(ot) {
     <div><span class="small muted">Profit</span><b>${money(ot.profit)}</b></div>
     ${ot.fees ? `<div><span class="small muted">Referral fees</span><b>${money(ot.fees)}</b></div>` : ''}`;
 }
+const PH = { material: 'e.g. J&K Naval B7 base cabinets', install: 'e.g. Cabinet installation', delivery: 'e.g. Delivery to site', fee: 'e.g. Haul-away fee', discount: 'e.g. Repeat-customer discount', referral: 'e.g. Electrical by partner' };
 function lineRow(l, li, st, ro) {
   const x = lineCalc(l, st);
   const dis = ro ? 'disabled' : '';
@@ -157,11 +159,11 @@ function lineRow(l, li, st, ro) {
   return `<tr data-li="${li}" class="${ref ? 'ref' : ''} ${x.low ? 'low' : ''}">
     <td><select data-k="kind" ${dis}>${KINDS.map(([k, lab]) => `<option value="${k}" ${l.kind === k ? 'selected' : ''}>${lab}</option>`).join('')}</select></td>
     <td><select data-k="deal" ${dis}><option value="resell" ${!ref ? 'selected' : ''}>Resell</option><option value="referral" ${ref ? 'selected' : ''}>Referral</option></select></td>
-    <td><input type="text" data-k="desc" value="${esc(l.desc)}" list="pbList" placeholder="e.g. J&K Naval B7 base cabinets" ${dis}></td>
+    <td><input type="text" data-k="desc" value="${esc(l.desc)}" list="pbList" placeholder="${esc(PH[l.deal === 'referral' ? 'referral' : l.kind] || PH.material)}" ${dis}></td>
     <td><input type="text" data-k="qty" value="${esc(l.qty ?? '')}" inputmode="decimal" ${dis}></td>
     <td><input type="text" data-k="unit" value="${esc(l.unit || '')}" ${dis}></td>
-    <td class="cost"><input type="text" data-k="list" value="${esc(l.list ?? '')}" inputmode="decimal" placeholder="—" ${dis}></td>
-    <td class="cost"><input type="text" data-k="disc" value="${esc(l.disc ?? '')}" inputmode="decimal" placeholder="—" ${dis}></td>
+    <td class="cost c-list"><input type="text" data-k="list" value="${esc(l.list ?? '')}" inputmode="decimal" placeholder="—" ${dis}></td>
+    <td class="cost c-list"><input type="text" data-k="disc" value="${esc(l.disc ?? '')}" inputmode="decimal" placeholder="—" ${dis}></td>
     <td class="cost"><input type="text" data-k="cost" value="${esc(l.cost ?? '')}" inputmode="decimal" placeholder="${x.unitCost != null && l.cost == null ? x.unitCost : ''}" ${dis}></td>
     ${ref ? `<td class="mk" colspan="2"><input type="text" data-k="refPct" value="${esc(l.refPct ?? '')}" placeholder="${st.referralPct}" inputmode="decimal" aria-label="Referral %" ${dis}><span class="small muted">% referral fee to TCRS</span></td>`
       : `<td class="mk"><input type="text" data-k="markup" value="${esc(l.markup ?? '')}" placeholder="${l.kind === 'discount' ? '' : st.markupDefault}" inputmode="decimal" ${dis}></td>
@@ -238,6 +240,7 @@ function wire() {
     $('[data-addopt]', secEl)?.addEventListener('click', () => { const o = { id: D.uuid(), name: 'Option ' + String.fromCharCode(65 + s.options.length), lines: [] }; s.options.push(o); s.chosen = o.id; save(); draw(); });
     $('[data-dupopt]', secEl)?.addEventListener('click', () => { const { o } = curSec(si); const cp = structuredClone(o); cp.id = D.uuid(); cp.name = 'Option ' + String.fromCharCode(65 + s.options.length); cp.lines.forEach((l) => (l.id = D.uuid())); s.options.push(cp); s.chosen = cp.id; save(); draw(); });
     $('[data-delopt]', secEl)?.addEventListener('click', () => { s.options = s.options.filter((o) => o.id !== s.chosen); s.chosen = s.options[0].id; save(); draw(); });
+    $('[data-listtog]', secEl)?.addEventListener('click', () => { s.showList = !secEl.classList.contains('nolist') ? false : true; if (!s.showList && s.options.some((o) => o.lines.some((l) => l.list != null || l.disc != null))) { toast('Some lines use list price + discount, so the columns stay visible.'); return; } save(); draw(); });
     $('[data-delsec]', secEl)?.addEventListener('click', () => { const old = structuredClone(q.sections); q.sections.splice(si, 1); save(); draw(); toast(`${s.product} removed.`, () => { q.sections = old; save(); draw(); }); });
     $('[data-optname]', secEl)?.addEventListener('change', (e) => { curSec(si).o.name = e.target.value.trim() || 'Option'; save(); draw(); });
     $('[data-secnote]', secEl)?.addEventListener('change', (e) => { s.note = e.target.value; save(); });

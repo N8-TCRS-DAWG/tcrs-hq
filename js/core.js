@@ -164,7 +164,7 @@ export function gateMissing(c, toKey) {
   if (ti >= 4 && !(q && q.mode === 'quote')) miss.push('A final quote (switch the estimate to Quote mode)');
   if (ti >= 5 && !(q && q.status === 'accepted')) miss.push('Quote marked accepted');
   if (toKey === 'ordered' && !(c.delivery_date || c.install_date)) miss.push('A delivery or install date');
-  if (toKey === 'paid' && !(c.paid?.amount > 0 && c.paid?.method)) miss.push('Payment recorded (amount + QuickBooks / Clover)');
+  if (toKey === 'paid' && !(Number(c.paid?.amount) > 0)) miss.push('A payment recorded (QuickBooks syncs it; cash/check/Clover go on Money & dates)');
   return miss;
 }
 

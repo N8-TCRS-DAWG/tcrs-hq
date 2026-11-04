@@ -8,16 +8,20 @@ import { addLinesToQuote } from './quote.js';
 let box = null;
 let st = null; // { customerId, files:[{file, type, thumb}], text, instr }
 
-export function openDrop({ customerId = null, manual = false } = {}) {
+export function openDrop({ customerId = null, manual = false, files = [], text = '' } = {}) {
   close();
-  st = { customerId, files: [], text: '', instr: '' };
+  st = { customerId, files: [], text, instr: '' };
   box = document.createElement('div');
   box.className = 'sheet-bg top-modal';
   box.style.zIndex = 55;
   box.addEventListener('click', (e) => { if (e.target === box) close(); });
   document.body.appendChild(box);
   manual ? drawManual() : drawDrop();
+  if (files.length) addFiles(files);
+  if (!manual) setTimeout(() => (text ? $('#dInstr', box) : $('#dText', box))?.focus(), 30);
 }
+export const dropOpen = () => !!box;
+export function addToDrop(files) { if (box && $('#dzList', box)) addFiles(files); }
 function close() { box?.remove(); box = null; }
 
 function head(title, sub) {
@@ -111,6 +115,7 @@ function drawDrop() {
   st.target = st.customerId || '';
   $$('#dChips .chip', box).forEach((b) => (b.onclick = () => { st.instr = b.textContent; $('#dInstr', box).value = st.instr; }));
   $('#dRead', box).onclick = () => read(true);
+  box.onkeydown = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); read(true); } };
   $('#dHand', box).onclick = () => read(false);
   drawFiles();
 }
@@ -278,6 +283,7 @@ function check(j, target) {
       <div class="lbl">Services</div><div class="row" id="cServs">${SERVICES.map((p) => `<button type="button" class="chip pick ${servs.includes(p) ? 'on' : ''}">${esc(p)}</button>`).join('')}</div>
     </div>
     <div class="check-sec"><div class="hd"><input type="checkbox" id="cTldrOn" checked aria-label="Use TL;DR"><h3>TL;DR</h3></div><textarea id="cTldr" rows="3">${esc(j.tldr || '')}</textarea></div>
+    ${payHTML(j, ex)}
     ${(j.log || []).length ? `<div class="check-sec"><div class="hd"><h3>History entries</h3></div>${j.log.map((l, i) => `<div class="crow"><input type="checkbox" data-log="${i}" checked><select data-lk="${i}">${['email', 'call', 'text', 'note', 'visit'].map((k) => `<option ${l.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select><input type="date" data-ld="${i}" value="${esc(l.date || todayISO())}"><input type="text" data-ls="${i}" value="${esc(l.summary || '')}"></div>`).join('')}</div>` : ''}
     <div class="check-sec"><div class="hd"><h3>Next steps</h3><span class="small muted">The card color comes from these.</span></div>
       ${(j.actions || []).map((a, i) => `<div class="crow"><input type="checkbox" data-act="${i}" checked><input type="text" data-at="${i}" value="${esc(a.title || '')}"><select data-aw="${i}">${WHOSE.map((w) => `<option value="${w.k}" ${a.whose === w.k ? 'selected' : ''}>${MOVE[w.k]}</option>`).join('')}</select><input type="date" data-ad="${i}" value="${esc(a.due || '')}"></div>`).join('') || '<p class="small muted">None suggested.</p>'}
@@ -288,18 +294,19 @@ function check(j, target) {
     <div class="check-sec"><div class="hd"><input type="checkbox" id="revOn" ${j.revision?.requested ? 'checked' : ''}><h3>Count a layout revision</h3></div><span class="small muted">${esc(j.revision?.why || 'Tick if the customer asked us to change a layout we made.')}</span></div>
     ${lay ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="layOn" checked><h3>Draw the layout</h3></div><span class="small">${lay.walls.map((w) => `${esc(w.name || '')} ${w.length_in}"`).join(' · ')}${(lay.items || []).length ? ` · ${lay.items.length} cabinets/appliances` : ''}. Saved as a new layout version you can adjust on the Layout tab.</span></div>` : ''}
     ${lines.length ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="linesOn" checked><h3>Add to the estimate (COST lines)</h3></div><div class="tbl-wrap"><table class="simple"><thead><tr><th>Product</th><th>What</th><th>Qty</th><th>Unit</th><th style="color:var(--cost)">COST / unit</th><th>Partner</th><th>Deal</th></tr></thead><tbody>${lines.map((l) => `<tr><td>${esc(l.product)}</td><td>${esc(l.desc)}<div class="small muted">${esc(l.kind)}</div></td><td>${esc(l.qty)}</td><td>${esc(l.unit)}</td><td>${l.cost != null ? '$' + esc(l.cost) : l.list != null ? `list $${esc(l.list)} − ${esc(l.disc || 0)}%` : '—'}</td><td>${esc(l.partner || '')}</td><td>${esc(l.deal || 'resell')}</td></tr>`).join('')}</tbody></table></div><span class="small muted">Prices (what the customer pays) are set on the Estimate tab with your markup.</span></div>` : ''}
-    ${payHTML(j, ex)}
     ${stageOk ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="stOn" checked><h3>Move to "${esc(STAGES[stageIdx(j.stage)].label)}"</h3></div></div>` : ''}
     ${j.conversion?.score ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="convOn" checked><h3>Likely to buy: ${esc(j.conversion.score)}/5</h3></div><span class="small muted">${esc(j.conversion.why || '')}</span></div>` : ''}
     ${(j.questions || []).length ? `<div class="check-sec"><div class="hd"><input type="checkbox" id="qOn" checked><h3>Still missing to quote</h3></div>${j.questions.map((q) => `<div class="small">• ${esc(q)}</div>`).join('')}<span class="small muted">Saved as one "Ask customer" step.</span></div>` : ''}
     <div class="row" ${j.__hand ? 'hidden' : ''}><span class="small muted">Was Claude's read good?</span><button type="button" class="btn sm" data-fb="1">👍</button><button type="button" class="btn sm" data-fb="-1">👎</button><input type="text" id="fbNote" class="grow" placeholder="What should it do differently next time? (it learns from this)"></div>
-    <div class="row"><button class="btn primary" type="button" id="save">Save to HQ</button><button class="btn" type="button" id="back">← Back</button></div>
+    <div class="row sticky-save"><button class="btn primary" type="button" id="save">Save to HQ</button><button class="btn" type="button" id="back">← Back</button><span class="small muted" id="saveTo"></span></div>
   </div>`;
   wireClose();
   $$('#cProds .chip, #cServs .chip', box).forEach((b) => (b.onclick = () => b.classList.toggle('on')));
   $$('[data-fb]', box).forEach((b) => (b.onclick = () => { fbRating = +b.dataset.fb; $$('[data-fb]', box).forEach((x) => x.classList.toggle('primary', x === b)); }));
   $('#back', box).onclick = () => { $('.sheet', box).classList.add('narrow'); drawDrop(); };
   $('#save', box).onclick = () => save(j, lay, lines);
+  const upd = () => { const sel = $('#cTarget', box); $('#saveTo', box).textContent = sel.value ? 'Adds to ' + sel.options[sel.selectedIndex].text.replace(/^Add to: /, '') : 'Creates a new customer'; };
+  $('#cTarget', box).onchange = upd; upd();
 }
 
 function payHTML(j, ex) {

@@ -177,6 +177,11 @@ function drawUI() {
       <span class="muted">or room</span><input type="text" id="qrW" placeholder="W" style="width:56px"> × <input type="text" id="qrD" placeholder="D" style="width:56px"><button class="btn sm" type="button" id="qrGo">Room</button>
       <span class="muted">Ceiling</span><input type="text" id="ceil" value="${E.plan.ceiling}" style="width:52px">"
     </div>`}
+    ${!E.plan.walls.length && !ro ? `<div class="start3">
+      <button type="button" class="s3" id="s3Up"><b>⬆ Upload a layout</b><span>J&amp;K / 2020 PDF, a customer sketch or a photo. Claude draws it.</span></button>
+      <button type="button" class="s3" id="s3Type"><b>⌨ Type wall lengths</b><span>e.g. 162, 78, 87 (inches). Fastest from a tape measure.</span></button>
+      <button type="button" class="s3" id="s3Draw"><b>✏ Draw walls</b><span>Click each corner on the grid.</span></button>
+    </div>` : ''}
     <div class="lay">
       <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
         ${E.view === 'plan' && !ro ? `<div class="tools">${tools.map(([k, l]) => `<button class="btn sm ${E.tool === k ? 'on' : ''}" type="button" data-tool="${k}">${l}</button>`).join('')}
@@ -261,6 +266,10 @@ function wireUI() {
   $('#lSave', el)?.addEventListener('click', () => saveLayout(false));
   $('#lRev', el)?.addEventListener('click', () => saveLayout(true));
   $('#lUp', el)?.addEventListener('click', () => $('#lUpIn', el).click());
+  $('#s3Up', el)?.addEventListener('click', () => $('#lUpIn', el).click());
+  $('#s3Type', el)?.addEventListener('click', () => { const q = $('#qw', el); q.focus(); q.scrollIntoView({ block: 'center' }); });
+  $('#s3Draw', el)?.addEventListener('click', () => { E.tool = 'wall'; drawUI(); });
+  $('#qw', el)?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#qwGo', el).click(); } });
   $('#lUpIn', el)?.addEventListener('change', (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) readLayoutFile(f); });
   $('#toEst', el)?.addEventListener('click', sendTakeoff);
   wireProps();

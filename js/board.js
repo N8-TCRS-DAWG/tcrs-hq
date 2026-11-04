@@ -22,8 +22,8 @@ export const received = (c) => Number(c.paid?.amount) || 0;
 function visible() {
   const q = F.q.trim().toLowerCase();
   return S.customers.filter((c) => (F.lost ? true : !c.lost))
-    .filter((c) => !q || [c.name, c.city, c.phone, c.email, (c.products || []).join(' ')].join(' ').toLowerCase().includes(q))
-    .filter((c) => !F.st || status(c).k === F.st);
+    .filter((c) => !q || [c.name, c.city, c.address, c.phone, (c.phone || '').replace(/\D/g, ''), c.email, c.tldr, (c.products || []).join(' ')].join(' ').toLowerCase().includes(q))
+    .filter((c) => !F.st || (F.st === 'due' ? dueSteps(c).length > 0 : status(c).k === F.st));
 }
 
 function card(c) {
@@ -36,11 +36,11 @@ function card(c) {
   const dates = keyDates(c);
   const v = value(c);
   return `<article class="card st-${st.k}" draggable="${canWrite()}" data-id="${c.id}" tabindex="0" aria-label="${esc(c.name)}, ${STATUS_TEXT[st.k]}">
-    <div class="t"><span class="name">${esc(c.name || 'No name yet')}</span>${early ? `<span class="score" title="Lead score: conversion feel, budget, repeat, intake quality">${sc.total}</span>` : ''}</div>
+    <div class="t"><span class="name">${esc(c.name || 'No name yet')}</span>${early ? `<span class="score" title="Lead score ${sc.total}/100: likely to buy, budget, repeat customer, intake quality">${sc.total}</span>` : ''}</div>
     ${(c.products || []).length ? `<div class="prods">${c.products.map((p) => `<span class="chip">${esc(p)}</span>`).join('')}</div>` : ''}
     <div class="next"><span class="dot" style="margin-top:4px"></span><span>${nx ? esc(nx.title) + (nx.due ? ` · <span class="${nx.due < todayISO() ? 'warn' : ''}">${fmtDate(nx.due)}</span>` : '') : `<b>${esc(st.why)}</b>`}</span></div>
     <div class="meta">
-      ${day != null ? `<span>Day ${day}</span>` : ''}
+      ${day != null ? `<span title="Days since first contact">${day === 0 ? 'New today' : day + (day === 1 ? ' day' : ' days') + ' in'}</span>` : ''}
       ${v ? `<span>${money0(v)}</span>` : ''}
       ${received(c) ? `<span class="got">Paid ${money0(received(c))}</span>` : (c.data?.paidUnknown ? '<span class="warn">Paid: amount?</span>' : '')}
       ${rv.used ? `<span class="${rv.over ? 'warn' : ''}">Rev ${rv.used}/${rv.allowed}</span>` : ''}
@@ -60,6 +60,7 @@ export function renderBoard(v) {
 
   v.innerHTML = `
   <div class="strip">
+    <button type="button" class="stat st-due ${F.st === 'due' ? 'on' : ''}" data-st="due" title="Steps due today or late, any owner"><span class="dot"></span><b>${S.customers.filter((c) => !c.lost).reduce((a, c) => a + dueSteps(c).length, 0)}</b> Due today / late</button>
     ${['red', 'yellow', 'green'].map((k) => `<button type="button" class="stat st-${k} ${F.st === k ? 'on' : ''}" data-st="${k}"><span class="dot"></span><b>${counts[k]}</b> ${STATUS_TEXT[k]}</button>`).join('')}
     <input type="search" id="bq" placeholder="Search name, city, product" value="${esc(F.q)}" aria-label="Search leads">
     <label class="small row" style="gap:4px"><input type="checkbox" id="blost" ${F.lost ? 'checked' : ''}> Show lost</label>
@@ -69,8 +70,8 @@ export function renderBoard(v) {
     ${canWrite() ? '<button class="btn" type="button" id="newLead">+ New lead by hand</button>' : ''}
   </div>
   ${F.st ? focusPanel(F.st) : ''}
-  <p class="legend">Color = whose move it is. <b style="color:var(--red)">Red</b>: we owe a step (or no step is set). <b style="color:var(--amber)">Yellow</b>: waiting on a supplier or contractor. <b style="color:var(--green)">Green</b>: waiting on the customer. The number is the lead score (0–100). Drag a card to move it.</p>
-  <div class="board-wrap"><div class="board">
+  <p class="legend">Card color = whose move it is. The dark badge is the lead score (0–100). Drag a card to another column, or open it and click a stage. Shortcuts: <kbd>D</kbd> Drop · <kbd>N</kbd> new lead · <kbd>/</kbd> search · drag files or paste anywhere.</p>
+  <div class="board-wrap"><div class="board" style="grid-template-columns:${STAGES.map((s, i) => list.some((c) => (c.stage || 'new') === s.k) ? 'minmax(190px, 1.6fr)' : i === STAGES.length - 1 ? 'minmax(130px, 0.9fr)' : 'minmax(112px, 0.7fr)').join(' ')}">
     ${STAGES.map((s, i) => {
       const cs = list.filter((c) => (c.stage || 'new') === s.k).sort(sortCards);
       const sum = cs.reduce((a, c) => a + value(c), 0);
@@ -84,7 +85,7 @@ export function renderBoard(v) {
 
   $$('.stat', v).forEach((b) => (b.onclick = () => { F.st = F.st === b.dataset.st ? null : b.dataset.st; saveF(); renderBoard(v); }));
   $('#fClear', v)?.addEventListener('click', () => { F.st = null; saveF(); renderBoard(v); });
-  $$('.focus-row', v).forEach((r) => (r.onclick = () => (location.hash = 'c-' + r.dataset.id)));
+  $$('.focus-row', v).forEach((r) => { r.onclick = () => (location.hash = 'c-' + r.dataset.id); r.onkeydown = (e) => { if (e.key === 'Enter') r.onclick(); }; });
   const bq = $('#bq', v);
   bq.oninput = () => { F.q = bq.value; saveF(); clearTimeout(bq._t); bq._t = setTimeout(() => { renderBoard(v); const x = $('#bq'); x.focus(); x.setSelectionRange(x.value.length, x.value.length); }, 200); };
   $('#blost', v).onchange = (e) => { F.lost = e.target.checked; saveF(); renderBoard(v); };
@@ -135,19 +136,21 @@ function openPayTray() {
 }
 
 const WAIT = { red: ['us'], yellow: ['supplier', 'contractor'], green: ['customer'] };
+const dueSteps = (c) => openActions(c.id).filter((a) => a.due && a.due <= todayISO());
+const LABEL = { ...STATUS_TEXT, due: 'Due today / late' };
 function focusPanel(k) {
   const t = todayISO();
-  const leads = S.customers.filter((c) => !c.lost && c.stage !== 'paid' && status(c).k === k);
+  const leads = S.customers.filter((c) => !c.lost && (k === 'due' ? dueSteps(c).length : c.stage !== 'paid' && status(c).k === k));
   const rows = [];
   leads.forEach((c) => {
-    const acts = openActions(c.id).filter((a) => WAIT[k].includes(a.waiting_on));
+    const acts = k === 'due' ? dueSteps(c) : openActions(c.id).filter((a) => WAIT[k].includes(a.waiting_on));
     if (!acts.length) rows.push({ c, title: k === 'red' ? 'No next step set — open and add one' : status(c).why, due: null });
     acts.forEach((a) => rows.push({ c, title: a.title, due: a.due, who: a.waiting_on }));
   });
   rows.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
-  return `<section class="focus-panel st-${k}" aria-label="${esc(STATUS_TEXT[k])}">
-    <div class="fh"><span class="dot"></span><h3>${esc(STATUS_TEXT[k])}: ${rows.length} step${rows.length === 1 ? '' : 's'} on ${leads.length} lead${leads.length === 1 ? '' : 's'}</h3><span class="grow"></span><button class="btn sm" type="button" id="fClear">Show all leads</button></div>
-    ${rows.map((r) => `<div class="focus-row" data-id="${r.c.id}" tabindex="0"><span class="due ${r.due && r.due < t ? 'late' : ''}">${r.due ? (r.due < t ? 'Late · ' : '') + fmtDate(r.due) : 'No date'}</span><span>${esc(r.title)}${r.who && r.who !== 'us' && r.who !== 'customer' ? ` <span class="chip">${esc(r.who)}</span>` : ''}</span><span class="who">${esc(r.c.name || 'No name')}</span></div>`).join('') || '<p class="small muted">Nothing here. Nice.</p>'}
+  return `<section class="focus-panel st-${k}" aria-label="${esc(LABEL[k])}">
+    <div class="fh"><span class="dot"></span><h3>${esc(LABEL[k])}: ${rows.length} step${rows.length === 1 ? '' : 's'} on ${leads.length} lead${leads.length === 1 ? '' : 's'}</h3><span class="grow"></span><button class="btn sm" type="button" id="fClear">Show all leads</button></div>
+    ${rows.map((r) => `<div class="focus-row" data-id="${r.c.id}" tabindex="0"><span class="due ${r.due && r.due < t ? 'late' : ''}">${r.due ? (r.due < t ? 'Late · ' : '') + fmtDate(r.due) : 'No date'}</span><span>${esc(r.title)}${r.who && (k === 'due' || (r.who !== 'us' && r.who !== 'customer')) ? ` <span class="chip">${esc(r.who === 'us' ? 'our move' : r.who)}</span>` : ''}</span><span class="who">${esc(r.c.name || 'No name')}</span></div>`).join('') || '<p class="small muted">Nothing here. Nice.</p>'}
   </section>`;
 }
 

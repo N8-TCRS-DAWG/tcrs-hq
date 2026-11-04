@@ -50,17 +50,27 @@ function draw() {
     <div class="sheet-h">
       <h2>${esc(c.name || 'No name yet')}</h2>
       <span class="pill st-${st.k}"><span class="dot"></span>${esc(STATUS_TEXT[st.k])}</span>
-      <span class="small muted">${c.first_contact ? `First contact ${fmtDate(c.first_contact)} · day ${daysBetween(c.first_contact, todayISO())}` : ''}</span>
-      ${canWrite() ? `<button class="btn sm" type="button" id="cDrop">⬆ Drop into ${esc((c.name || 'this customer').split(' ')[0])}</button>` : ''}
-      <button class="x" type="button" aria-label="Close" id="cClose">×</button>
+      <span class="small muted">${c.first_contact ? `First contact ${fmtDate(c.first_contact)} · ${daysBetween(c.first_contact, todayISO()) === 0 ? 'new today' : daysBetween(c.first_contact, todayISO()) + ' days in'}` : ''}</span>
+      <span class="qc">${c.phone ? `<a class="chip pick" href="tel:${esc(c.phone.replace(/[^\d+]/g, ''))}" title="Call">📞 ${esc(c.phone)}</a><button class="chip pick" type="button" data-copy="${esc(c.phone)}" title="Copy phone">Copy</button>` : ''}${c.email ? `<a class="chip pick" href="mailto:${esc(c.email)}" title="Email">✉ ${esc(c.email)}</a><button class="chip pick" type="button" data-copy="${esc(c.email)}" title="Copy email">Copy</button>` : ''}</span>
+      ${canWrite() ? `<button class="btn sm" type="button" id="cDrop" title="Add files, emails or notes to this customer (D)">⬆ Drop into ${esc((c.name || 'this customer').split(' ')[0])}</button>` : ''}
+      <span class="navpn"><button class="btn ghost sm" type="button" id="cPrev" title="Previous customer (←)" aria-label="Previous customer">‹</button><button class="btn ghost sm" type="button" id="cNext" title="Next customer (→)" aria-label="Next customer">›</button></span>
+      <button class="x" type="button" aria-label="Close" id="cClose" title="Close (Esc)">×</button>
     </div>
     <div class="sheet-b">
+      <div class="lbl" style="margin-bottom:-8px">Stage · click a step to move the job</div>
       <nav class="stepper" aria-label="Stage">${STAGES.map((s, i) => `<button type="button" class="step ${i < si ? 'done' : i === si ? 'cur' : ''}" data-stage="${s.k}" ${canWrite() ? '' : 'disabled'}><span class="b">${i < si ? '✓' : i + 1}</span><span class="s">${esc(s.short)}</span></button>`).join('')}</nav>
       ${nextCard(c, st)}
       <div class="tabs" role="tablist">${tabSubs(c).map(([k, l, sub]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}"><span>${l}</span><span class="ts">${esc(sub)}</span></button>`).join('')}</div>
       <div id="tabBody"></div>
     </div></div>`;
   $('#cClose', sheet).onclick = () => closeCustomer();
+  $$('[data-copy]', sheet).forEach((b) => (b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied.'); } catch { toast('Copy blocked by the browser.'); } }));
+  const order = boardOrder();
+  const ix = order.indexOf(c.id);
+  const go = (d) => { if (order.length > 1) location.hash = 'c-' + order[(ix + d + order.length) % order.length]; };
+  $('#cPrev', sheet).onclick = () => go(-1);
+  $('#cNext', sheet).onclick = () => go(1);
+  sheet.onkeydown = (e) => { const a = document.activeElement; if (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return; if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); };
   $('#cDrop', sheet)?.addEventListener('click', () => openDrop({ customerId: c.id }));
   $$('.step', sheet).forEach((b) => (b.onclick = () => { if (b.dataset.stage !== c.stage) moveStage(c, b.dataset.stage); }));
   $$('[data-tab]', sheet).forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
@@ -91,6 +101,27 @@ function tabSubs(c) {
   ];
 }
 
+const STEP_IDEAS = {
+  new: ['Send intake form', 'Call to qualify the project', 'Book a measure visit'],
+  intake: ['Get photos + wall lengths', 'Book a measure visit', 'Get finish / style choices'],
+  estimate: ['Send estimate', 'Follow up on estimate', 'Send $250 design deposit agreement'],
+  design: ['Measure + verify sizes', 'Draw layout', 'Send layout + rendering', 'Get supplier quote'],
+  quote: ['Send final quote', 'Follow up on quote'],
+  accepted: ['Collect payment', 'Order from supplier'],
+  ordered: ['Confirm delivery date', 'Schedule installation', 'Remove old cabinets'],
+  installed: ['Punch-list walk-through', 'Send final invoice', 'Ask for a review'],
+  paid: ['Ask for a review', 'Ask for referrals'],
+};
+const WAITS = { 'Get supplier quote': 'supplier', 'Confirm delivery date': 'supplier' };
+function boardOrder() {
+  return [...S.customers].filter((x) => !x.lost).sort((a, b) => stageIdx(a.stage) - stageIdx(b.stage) || (a.first_contact || '').localeCompare(b.first_contact || '')).map((x) => x.id);
+}
+function intakeText() {
+  const d = S.docs.find((x) => /intake questions/i.test(x.title));
+  return d?.body || STARTER_INTAKE;
+}
+const STARTER_INTAKE = "Thanks for reaching out! Answer what you can below and I'll get you a quote as soon as possible.\n1) Full name\n2) Phone number\n3) Email\n4) Project address (city + ZIP is fine for now)\n5) Products needed (cabinets, countertops, flooring, appliances, other)\n6) Services needed (delivery, installation, design/layout, removal of old materials)\n7) Project description + dimensions\n8) Finish or style preferences (color, door style, material), if you know them\n9) Budget range\n10) Timeline\n11) Current condition of the space (occupied home, gutting/remodel, new construction)\n12) How did you hear about us?\nPlease also send photos of the space and any layouts, drawings or measurements you have.";
+
 /* ───────── Next card: the one thing that matters ───────── */
 function nextCard(c, st) {
   const acts = openActions(c.id);
@@ -111,7 +142,8 @@ function nextCard(c, st) {
       <span class="whose" id="aWhose">${WHOSE.map((w, i) => `<button type="button" data-w="${w.k}" class="${i === 0 ? 'on us' : ''}">${w.label}</button>`).join('')}</span>
       <input type="date" id="aDue" value="${addDays(todayISO(), 1)}" aria-label="Due date">
       <button class="btn primary" type="submit">Add step</button>
-    </form>` : ''}
+    </form>
+    <div class="row ideas"><span class="small muted">Common next steps:</span>${(STEP_IDEAS[c.stage] || STEP_IDEAS.new).filter((t) => !acts.some((a) => a.title === t)).map((t) => `<button type="button" class="chip pick" data-idea="${esc(t)}">${esc(t)}</button>`).join('')}${['new', 'intake'].includes(c.stage) ? '<button type="button" class="chip pick" id="cpIntake" title="Copy the 12 intake questions to paste into an email or text">📋 Copy intake questions</button>' : ''}</div>` : ''}
   </section>`;
 }
 function wireNext(c) {
@@ -119,8 +151,9 @@ function wireNext(c) {
     const a = S.actions.find((x) => x.id === el.dataset.aid);
     $('.done', el).onchange = async () => {
       await D.update('actions', a.id, { done: true, done_at: new Date().toISOString() });
-      toast('Step done.', () => D.update('actions', a.id, { done: false, done_at: null }));
+      toast('Step done. What\'s next?', () => D.update('actions', a.id, { done: false, done_at: null }));
       logEvent(c.id, 'system', `Done: ${a.title}`);
+      setTimeout(() => $('#aTitle', sheet)?.focus(), 400);
     };
     $$('.whose button', el).forEach((b) => (b.onclick = () => D.update('actions', a.id, { waiting_on: b.dataset.w })));
     $('.due', el).onchange = (e) => D.update('actions', a.id, { due: e.target.value || null });
@@ -129,7 +162,10 @@ function wireNext(c) {
   const f = $('#addAct', sheet);
   if (f) {
     let w = 'us';
-    $$('#aWhose button', sheet).forEach((b) => (b.onclick = () => { w = b.dataset.w; $$('#aWhose button', sheet).forEach((x) => (x.className = x === b ? 'on ' + w : '')); }));
+    const pickW = (k) => { w = k; $$('#aWhose button', sheet).forEach((x) => (x.className = x.dataset.w === k ? 'on ' + k : '')); };
+    $$('#aWhose button', sheet).forEach((b) => (b.onclick = () => pickW(b.dataset.w)));
+    $$('[data-idea]', sheet).forEach((b) => (b.onclick = () => { const i = $('#aTitle', sheet); i.value = b.dataset.idea; pickW(WAITS[b.dataset.idea] || 'us'); i.focus(); }));
+    $('#cpIntake', sheet)?.addEventListener('click', async () => { try { await navigator.clipboard.writeText(intakeText()); toast('Intake questions copied. Paste into your email or text.'); } catch { toast('Copy blocked by the browser. Find them under Help & SOPs.'); } });
     f.onsubmit = async (e) => {
       e.preventDefault();
       const title = $('#aTitle', sheet).value.trim();

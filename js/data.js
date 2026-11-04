@@ -7,6 +7,7 @@ export const isDemo = !(cfg.SUPABASE_URL && cfg.SUPABASE_KEY);
 let sb = null;
 const listeners = new Set();
 export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+const saved = () => { try { document.dispatchEvent(new CustomEvent('hq-saved')); } catch {} };
 function emit(table) { listeners.forEach((fn) => { try { fn(table); } catch (e) { console.error(e); } }); }
 
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
@@ -70,11 +71,12 @@ export async function insert(table, row) {
   const now = new Date().toISOString();
   if (isDemo) {
     const r = { id: row.id || uuid(), created_at: now, updated_at: now, ...row };
-    demo[table].push(r); demoSave(); emit(table); return { ...r };
+    demo[table].push(r); demoSave(); emit(table); saved(); return { ...r };
   }
   const { data, error } = await sb.from(table).insert(row).select().single();
   if (error) throw new Error(`${table}: ${error.message}`);
   emit(table);
+  saved();
   return data;
 }
 
@@ -83,11 +85,12 @@ export async function update(table, id, patch) {
   if (isDemo) {
     const r = demo[table].find((x) => x.id === id);
     if (!r) throw new Error('Not found');
-    Object.assign(r, withTime); demoSave(); emit(table); return { ...r };
+    Object.assign(r, withTime); demoSave(); emit(table); saved(); return { ...r };
   }
   const { data, error } = await sb.from(table).update(withTime).eq('id', id).select().single();
   if (error) throw new Error(`${table}: ${error.message}`);
   emit(table);
+  saved();
   return data;
 }
 
@@ -95,11 +98,12 @@ export async function upsert(table, row) {
   if (isDemo) {
     const r = demo[table].find((x) => x.id === row.id);
     if (r) Object.assign(r, row); else demo[table].push({ ...row });
-    demoSave(); emit(table); return row;
+    demoSave(); emit(table); saved(); return row;
   }
   const { data, error } = await sb.from(table).upsert(row).select().single();
   if (error) throw new Error(`${table}: ${error.message}`);
   emit(table);
+  saved();
   return data;
 }
 
@@ -122,10 +126,11 @@ function demoRecalc(cid) {
 }
 
 export async function remove(table, id) {
-  if (isDemo) { demo[table] = demo[table].filter((x) => x.id !== id); demoSave(); emit(table); return; }
+  if (isDemo) { demo[table] = demo[table].filter((x) => x.id !== id); demoSave(); emit(table); saved(); return; }
   const { error } = await sb.from(table).delete().eq('id', id);
   if (error) throw new Error(`${table}: ${error.message}`);
   emit(table);
+  saved();
 }
 
 /* ───────── files ───────── */

@@ -3,7 +3,7 @@ import * as D from './data.js';
 import { S, $, esc, toast, todayISO, addDays } from './core.js';
 import { renderBoard, renderRace } from './board.js';
 import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js';
-import { openDrop } from './drop.js';
+import { openDrop, dropOpen, addToDrop } from './drop.js';
 import { renderHelp, renderBrain } from './help.js';
 
 const app = $('#app');
@@ -22,6 +22,7 @@ async function boot() {
   if (S.role === 'tv' && location.hash !== '#tv') location.hash = 'tv';
   D.onChange(onData);
   D.startLive();
+  if (S.role !== 'tv') { wireAnywhere(); wireSaveState(); }
   window.addEventListener('hashchange', route);
   route();
 }
@@ -73,14 +74,14 @@ function route() {
 }
 
 function shell(active) {
-  const flow = ['board', 'race', 'help', 'brain'].map((k, i) =>
-    `${i ? '<span class="arrow" aria-hidden="true">›</span>' : ''}<a href="#${k}" class="${active === k ? 'on' : ''}">${VIEWS[k]}</a>`).join('');
+  const flow = ['board', 'race', 'help', 'brain'].map((k) =>
+    `<a href="#${k}" class="${active === k ? 'on' : ''}">${VIEWS[k]}</a>`).join('');
   const me = S.profiles.find((p) => p.id === S.me?.id);
   return `
   <header class="top">
     <a href="#board" aria-label="TCRS HQ home"><img class="logo" src="img/logo-green.png" alt="Twin Cities Remodeling Supply"></a>
     <nav class="flow" aria-label="Main">${flow}</nav>
-    ${S.role !== 'tv' ? '<button class="drop-btn" id="dropBtn" type="button"><span aria-hidden="true">⬆</span> Drop</button>' : ''}
+    ${S.role !== 'tv' ? '<button class="drop-btn" id="dropBtn" type="button" title="Drop files, emails or notes (D). You can also drag files or paste anywhere."><span aria-hidden="true">⬆</span> Drop</button>' : ''}
     <button class="who" id="whoBtn" type="button" title="Sign out">${esc(me?.name || S.me?.email || '')} · ${esc(S.role)}</button>
   </header>
   ${S.demo ? '<div class="banner"><b>Demo mode.</b> Data stays in this browser only, and Claude reading is off. Add the Supabase keys to config.js to go live. Example customers are marked "Example".</div>' : ''}
@@ -101,6 +102,57 @@ function renderView() {
   else if (k === 'tv') renderRace(v, true);
   else if (k === 'help') renderHelp(v);
   else if (k === 'brain') renderBrain(v);
+}
+
+/* Drop from anywhere: drag files onto the window, paste text/screenshots outside a field, keyboard shortcuts. */
+function wireAnywhere() {
+  let veil = null, depth = 0;
+  const show = () => {
+    if (veil) return;
+    veil = document.createElement('div');
+    veil.className = 'drag-veil';
+    const c = S.customers.find((x) => x.id === currentCustomerId());
+    veil.innerHTML = `<div><b>Drop to add${c ? ' to ' + esc(c.name || 'this customer') : ''}</b><span>Photos, layouts, PDFs, scans, emails</span></div>`;
+    document.body.appendChild(veil);
+  };
+  const hide = () => { veil?.remove(); veil = null; depth = 0; };
+  window.addEventListener('dragenter', (e) => { if (![...(e.dataTransfer?.types || [])].includes('Files')) return; depth++; show(); });
+  window.addEventListener('dragleave', () => { if (--depth <= 0) hide(); });
+  window.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault(); });
+  window.addEventListener('drop', (e) => {
+    const files = [...(e.dataTransfer?.files || [])];
+    hide();
+    if (!files.length) return;
+    e.preventDefault();
+    if (dropOpen()) addToDrop(files); else openDrop({ customerId: currentCustomerId(), files });
+  });
+  document.addEventListener('paste', (e) => {
+    const a = document.activeElement;
+    if (dropOpen() || (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) || a?.isContentEditable) return;
+    const files = [...(e.clipboardData?.files || [])];
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (!files.length && !text.trim()) return;
+    e.preventDefault();
+    openDrop({ customerId: currentCustomerId(), files: files.map((f, i) => new File([f], f.name && f.name !== 'image.png' ? f.name : `pasted-${Date.now()}-${i}.png`, { type: f.type })), text });
+    toast('Pasted into the Drop.');
+  });
+  document.addEventListener('keydown', (e) => {
+    const a = document.activeElement;
+    if (e.ctrlKey || e.metaKey || e.altKey || (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) || document.querySelector('.top-modal')) return;
+    if (e.key === 'd' || e.key === 'D') { e.preventDefault(); openDrop({ customerId: currentCustomerId() }); }
+    else if (e.key === '/' && !currentCustomerId()) { const q = $('#bq'); if (q) { e.preventDefault(); q.focus(); } }
+    else if (e.key === 'n' && !currentCustomerId()) { e.preventDefault(); openDrop({ manual: true }); }
+  });
+}
+
+function wireSaveState() {
+  const el = document.createElement('div');
+  el.className = 'save-state'; el.setAttribute('role', 'status');
+  document.body.appendChild(el);
+  let t;
+  const flash = (msg, err) => { el.textContent = msg; el.classList.toggle('err', !!err); el.classList.add('show'); clearTimeout(t); t = setTimeout(() => el.classList.remove('show'), err ? 6000 : 1400); };
+  document.addEventListener('hq-saved', () => flash('✓ Saved'));
+  window.addEventListener('unhandledrejection', (e) => { flash('Not saved: ' + (e.reason?.message || 'check your connection'), true); });
 }
 
 function whoMenu() {
