@@ -232,7 +232,7 @@ export function renderTV(v) {
       <div class="tv-tile"><span class="tv-l">Whose move</span><span class="tv-pills">${['red', 'yellow', 'green'].map((k) => `<span class="st-${k}"><span class="dot"></span>${counts[k]} ${k === 'red' ? 'us' : k === 'yellow' ? 'partner' : 'customer'}</span>`).join('')}</span></div>
       <div class="tv-clock"><span id="clock"></span><span class="tv-s" id="tvUpd"></span></div>
     </header>
-    <section class="tv-race">
+    <section class="tv-race" style="grid-template-columns:${STAGES.map((s) => live.some((c) => (c.stage || 'new') === s.k) ? 'minmax(0, 1fr)' : 'minmax(0, 0.5fr)').join(' ')}">
       ${STAGES.map((s, i) => {
         let cs = live.filter((c) => (c.stage || 'new') === s.k);
         if (s.k === 'paid') cs = cs.filter((c) => (c.paid?.at || c.updated_at || '') >= thirty.slice(0, 10));
