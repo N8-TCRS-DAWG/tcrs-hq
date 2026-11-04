@@ -1,7 +1,7 @@
 // Boot, login, top bar, routing, live refresh.
 import * as D from './data.js';
 import { S, $, esc, toast, todayISO, addDays } from './core.js';
-import { renderBoard, renderRace } from './board.js';
+import { renderBoard, renderRace, renderTV } from './board.js';
 import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js';
 import { openDrop, dropOpen, addToDrop } from './drop.js';
 import { renderHelp, renderBrain } from './help.js';
@@ -24,6 +24,9 @@ async function boot() {
   D.startLive();
   if (S.role !== 'tv') { wireAnywhere(); wireSaveState(); }
   window.addEventListener('hashchange', route);
+  // TV: click = full screen; Esc leaves TV mode (except for the TV login)
+  document.addEventListener('click', () => { if (document.body.classList.contains('tv') && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('tv') && S.role !== 'tv') location.hash = 'board'; });
   route();
 }
 
@@ -68,6 +71,7 @@ function viewKey() {
 function route() {
   const h = location.hash.replace('#', '');
   document.body.classList.toggle('tv', h === 'tv');
+  if (h === 'tv') document.documentElement.dataset.theme = 'dark'; else if (document.documentElement.dataset.theme === 'dark' && !window.__userTheme) delete document.documentElement.dataset.theme;
   renderView();
   if (h.startsWith('c-')) openCustomer(h.slice(2));
   else if (currentCustomerId()) closeCustomer(true);
@@ -99,7 +103,7 @@ function renderView() {
   const v = $('#view');
   if (k === 'board') renderBoard(v);
   else if (k === 'race') renderRace(v, false);
-  else if (k === 'tv') renderRace(v, true);
+  else if (k === 'tv') renderTV(v);
   else if (k === 'help') renderHelp(v);
   else if (k === 'brain') renderBrain(v);
 }

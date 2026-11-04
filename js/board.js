@@ -200,3 +200,65 @@ export function renderRace(v, tv) {
     tick(); clockTimer = setInterval(tick, 20000);
   }
 }
+
+
+/* ───────── Office TV (40–55" seen from 8–15 ft): money · race · next 7 days ───────── */
+let tvTimers = [];
+let wakeLock = null;
+export function renderTV(v) {
+  const t = todayISO();
+  const live = S.customers.filter((c) => !c.lost);
+  const open = live.filter((c) => c.stage !== 'paid');
+  const counts = { red: 0, yellow: 0, green: 0 };
+  open.forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
+  const month = t.slice(0, 7);
+  const monthName = new Date(t + 'T12:00').toLocaleDateString('en-US', { month: 'long' });
+  const collected = S.payments.filter((p) => p.status === 'applied' && (p.paid_date || '').startsWith(month)).reduce((a, p) => a + Number(p.amount || 0), 0)
+    + live.filter((c) => Number(c.paid?.other) > 0 && (c.paid?.at || '').startsWith(month)).reduce((a, c) => a + Number(c.paid.other), 0);
+  const pipeline = open.reduce((a, c) => a + value(c), 0);
+  const end = new Date(t + 'T12:00'); end.setDate(end.getDate() + 7);
+  const endISO = end.toISOString().slice(0, 10);
+  const events = [];
+  live.forEach((c) => [['Measure', c.measure_date], ['Delivery', c.delivery_date], ['Install', c.install_date]].forEach(([k, d]) => { if (d && d >= t && d <= endISO) events.push({ k, d, c }); }));
+  events.sort((a, b) => a.d.localeCompare(b.d) || a.k.localeCompare(b.k));
+  const thirty = new Date(Date.now() - 30 * 864e5).toISOString();
+  const dayLbl = (d) => d === t ? 'Today' : d === addDaysISO(t, 1) ? 'Tomorrow' : new Date(d + 'T12:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  v.innerHTML = `<div class="tvw">
+    <header class="tv-top">
+      <img src="img/logo-green.png" alt="TCRS" class="tv-logo">
+      <div class="tv-tile"><span class="tv-l">Open pipeline</span><span class="tv-v">${money0(pipeline)}</span><span class="tv-s">${open.length} active job${open.length === 1 ? '' : 's'}</span></div>
+      <div class="tv-tile good"><span class="tv-l">Collected in ${esc(monthName)}</span><span class="tv-v">${money0(collected)}</span><span class="tv-s">QuickBooks + other payments</span></div>
+      <div class="tv-tile"><span class="tv-l">Whose move</span><span class="tv-pills">${['red', 'yellow', 'green'].map((k) => `<span class="st-${k}"><span class="dot"></span>${counts[k]} ${k === 'red' ? 'us' : k === 'yellow' ? 'partner' : 'customer'}</span>`).join('')}</span></div>
+      <div class="tv-clock"><span id="clock"></span><span class="tv-s" id="tvUpd"></span></div>
+    </header>
+    <section class="tv-race">
+      ${STAGES.map((s, i) => {
+        let cs = live.filter((c) => (c.stage || 'new') === s.k);
+        if (s.k === 'paid') cs = cs.filter((c) => (c.paid?.at || c.updated_at || '') >= thirty.slice(0, 10));
+        cs.sort((a, b) => (a.first_contact || '').localeCompare(b.first_contact || ''));
+        const more = Math.max(0, cs.length - 6);
+        return `<div class="tv-lane ${i === STAGES.length - 1 ? 'fin' : ''}"><div class="tv-lh">${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.short)} <b>${cs.length}</b></div>
+          ${cs.slice(0, 6).map((c) => { const st = status(c); const d = keyDates(c); return `<div class="tv-car st-${st.k}"><div class="n">${esc(c.name || 'No name')}</div><div class="p">${esc((c.products || []).map((p) => PROD_SHORT[p] || p).join(' · ') || '—')}</div>${d.length ? `<div class="k">${d.map((x) => `<span class="${x.warn ? 'warn' : ''}">${esc(x.text)}</span>`).join('')}</div>` : ''}</div>`; }).join('')}
+          ${more ? `<div class="tv-more">+${more} more</div>` : ''}</div>`;
+      }).join('')}
+    </section>
+    <section class="tv-week"><div class="tv-wh">Next 7 days</div>
+      <div class="tv-ev">${events.slice(0, 10).map((e) => `<div class="ev ${e.k.toLowerCase()}"><span class="when">${esc(dayLbl(e.d))}</span><span class="what">${esc(e.k)}</span><span class="evn">${esc(e.c.name || '')}</span></div>`).join('') || '<div class="tv-s" style="font-size:20px">No measures, deliveries or installs scheduled.</div>'}${events.length > 10 ? `<div class="ev"><span class="what">+${events.length - 10} more</span></div>` : ''}</div>
+    </section>
+  </div>`;
+
+  tvTimers.forEach(clearInterval); tvTimers = [];
+  const tick = () => {
+    const el = document.getElementById('clock'); if (!el) return;
+    el.textContent = new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const u = document.getElementById('tvUpd'); if (u) u.textContent = (navigator.onLine === false ? '⚠ Offline — showing last data · ' : '') + 'Updated ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
+  tick(); tvTimers.push(setInterval(tick, 20000));
+  // reload every 6 hours (picks up app updates, clears memory) — only on the TV
+  if (!window.__tvReload) window.__tvReload = setTimeout(() => location.reload(), 6 * 3600 * 1000);
+  // keep the screen awake where the browser allows it
+  if (!wakeLock && navigator.wakeLock) navigator.wakeLock.request('screen').then((w) => { wakeLock = w; w.addEventListener('release', () => (wakeLock = null)); }).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && document.body.classList.contains('tv') && navigator.wakeLock) navigator.wakeLock.request('screen').then((w) => (wakeLock = w)).catch(() => {}); });
+function addDaysISO(iso, k) { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + k); return d.toISOString().slice(0, 10); }
