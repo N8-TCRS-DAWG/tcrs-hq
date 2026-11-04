@@ -7,6 +7,8 @@
 
 const ALLOWED_EMAILS = ["nathan@tcremodelingsupply.com", "service@tcremodelingsupply.com"];
 const OUR_DOMAIN = "tcremodelingsupply.com";
+// Supplier domains (plus any partner emails saved in HQ). Their addresses are never used as a customer's email.
+const SUPPLIER_DOMAINS = ["jk-cabinetry.com"];
 const STAGES = ["new", "intake", "estimate", "design", "quote", "accepted", "paid", "ordered", "installed"];
 const MODEL_TRIAGE = "claude-haiku-5-5";
 const MODEL_READ = "claude-sonnet-5-5";
@@ -66,6 +68,8 @@ Return ONLY JSON:
 Rules:
 - Never invent facts. Fields not stated stay null / []. Products from: Cabinets, Countertops, Flooring, Appliances, Doors & trim, Garage doors, Sauna / plunge, Furniture, Other. Services from: Delivery, Installation, Design / layout, Removal.
 - Match: pick customerId only when the email, phone, name or project address clearly matches. A supplier/designer email about a customer's job → kind partner_about_customer and that customer's id. Unknown person asking about a project → new_lead with customerId null.
+- Supplier threads (J&K / jk-cabinetry.com, Twin Rivers, other vendors): the customer is the homeowner the job is FOR (often named in the subject, e.g. "quote request - Areli Vanities" = customer Areli), never the supplier. Never put a supplier's email/phone in "customer". If the job's customer is not in the list, kind new_lead with only what is known about that customer.
+- Lead-form notifications (Google Local Services, Angi, Thumbtack, website forms): the customer is the person described in the body, not the sender. No name given → name "Potential customer – <city>". Put the platform in source (e.g. "Google Local Services").
 - log: one line per NEW message (skip auto-notifications). "who" is the sender's side.
 - actions_add: only real next steps that are not already in the file's open steps. whose = who must act next. If a customer asked us something, that's an "us" step. If we asked them, it's a "customer" step. Due dates only when stated or obvious (e.g. "by Friday").
 - stage: one of ${STAGES.join(", ")} only when the emails clearly show a move (estimate/quote sent, quote accepted, payment made, order placed, delivery/install scheduled). Otherwise null.
@@ -122,12 +126,15 @@ Deno.serve(async (req) => {
     const st = setRows[0]?.data || {};
 
     // Pre-match on email / phone so Claude sees the right file.
-    const people = new Set(th.messages.flatMap((m: any) => [...emailsIn(m.from), ...emailsIn(m.to), ...emailsIn(m.cc)]).filter((e: string) => !e.endsWith("@" + OUR_DOMAIN)));
+    const supDomains = new Set([...SUPPLIER_DOMAINS, ...partners.map((p: any) => String(p.email || "").toLowerCase().split("@")[1]).filter(Boolean)]);
+    const isSupplier = (e: string) => supDomains.has(String(e || "").toLowerCase().split("@")[1] || "");
+    const all = th.messages.flatMap((m: any) => [...emailsIn(m.from), ...emailsIn(m.to), ...emailsIn(m.cc)]);
+    const people = new Set(all.filter((e: string) => !e.endsWith("@" + OUR_DOMAIN) && !isSupplier(e)));
     const text = th.messages.map((m: any) => m.body || "").join("\n");
     let pre = customers.filter((c: any) => c.email && people.has(c.email.toLowerCase()));
     if (!pre.length) pre = customers.filter((c: any) => digits(c.phone).length === 10 && digits(text).length && text.replace(/\D/g, "").includes(digits(c.phone)));
     const preC = pre.length === 1 ? pre[0] : null;
-    const partnerMail = partners.some((p: any) => p.email && people.has(p.email.toLowerCase()));
+    const partnerMail = all.some((e: string) => isSupplier(e));
 
     const thread = th.messages.map((m: any) => `--- ${seen.has(String(m.mid || m.gid)) ? "context" : "NEW"} | id: ${m.mid || m.gid} | ${m.date}\nFrom: ${m.from}\nTo: ${m.to}${m.cc ? "\nCc: " + m.cc : ""}${(m.attachments || []).length ? "\nAttachments: " + m.attachments.join(", ") : ""}\n\n${strip(String(m.body || ""))}`).join("\n\n");
 
@@ -159,7 +166,7 @@ Deno.serve(async (req) => {
       const first = th.messages[0]?.date?.slice(0, 10) || now.slice(0, 10);
       const ins = await post("customers", {
         name: cu.name || (th.messages[0]?.from || "").replace(/<.*>/, "").trim() || "New lead (email)",
-        email: cu.email || [...people][0] || null, phone: cu.phone, address: cu.address, city: cu.city, zip: cu.zip,
+        email: (cu.email && !isSupplier(cu.email) ? cu.email : null) || [...people][0] || null, phone: cu.phone, address: cu.address, city: cu.city, zip: cu.zip,
         source: cu.source || "Email", ctype: cu.ctype, budget: num(cu.budget), timeline: cu.timeline,
         products: cu.products || [], services: cu.services || [], first_contact: first, stage: "new", tldr: j.tldr || null,
         data: { auto: { at: now, src: box + "@" }, ...(cu.finishes ? { finishes: cu.finishes } : {}), needsReview: j.confidence !== "high", ...(box === "service" ? { onlyService: true } : {}) },
@@ -170,7 +177,7 @@ Deno.serve(async (req) => {
       const p: any = {}; const changes: any[] = [];
       for (const k of ["name", "phone", "email", "address", "city", "zip", "source", "ctype", "budget", "timeline"]) {
         const v = k === "budget" ? num(cu[k]) : cu[k];
-        if (v == null || v === "") continue;
+        if (v == null || v === "" || (k === "email" && isSupplier(v))) continue;
         if (!c[k]) p[k] = v;
         else if (String(c[k]).toLowerCase().trim() !== String(v).toLowerCase().trim() && ["phone", "email", "address"].includes(k)) changes.push({ field: k, old: c[k], new: v, at: now });
       }
