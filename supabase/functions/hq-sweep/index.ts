@@ -82,18 +82,21 @@ function strip(body: string) {
 }
 const emailsIn = (s: string) => (String(s || "").toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || []);
 const digits = (s: string) => String(s || "").replace(/\D/g, "").slice(-10);
+// budget column is numeric: "$20k" -> 20000, "about 15,000" -> 15000, "not sure" -> null
+const num = (x: any) => { const t = String(x ?? ""); const n = Number(t.replace(/[^0-9.]/g, "")) * (/\d\s*k\b/i.test(t) ? 1000 : 1); return n > 0 ? n : null; };
+const isDate = (x: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
-  const idt = req.headers.get("X-Google-Id-Token") || "";
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: "Bad body" }, 400); }
+  // Token comes in the body (idToken): Google strips outgoing X-Google-* headers from UrlFetchApp.
+  const idt = String(body?.idToken || req.headers.get("X-Hq-Id-Token") || req.headers.get("X-Google-Id-Token") || "");
   const g = idt ? await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idt)}`) : null;
   const info = g?.ok ? await g.json() : null;
   const me = String(info?.email || "").toLowerCase();
   if (!info || String(info.email_verified) !== "true" || !ALLOWED_EMAILS.includes(me)) return json({ error: "Not allowed" }, 403);
   const box = me.startsWith("service@") ? "service" : "nathan";
-
-  let body: any;
-  try { body = await req.json(); } catch { return json({ error: "Bad body" }, 400); }
 
   // End-of-run summary from the script
   if (body.summary) {
@@ -112,7 +115,7 @@ Deno.serve(async (req) => {
     if (!fresh.length) return json({ action: "seen" });
 
     const [customers, partners, setRows] = await Promise.all([
-      db("customers?select=id,name,email,phone,address,city,stage,products,services,lost,tldr,first_contact,measure_date,delivery_date,install_date,source,ctype,budget,timeline,finishes,zip,data"),
+      db("customers?select=id,name,email,phone,address,city,stage,products,services,lost,tldr,first_contact,measure_date,delivery_date,install_date,source,ctype,budget,timeline,zip,data"),
       db("partners?select=name,ptype,email"),
       db("settings?select=id,data&id=eq.main"),
     ]);
@@ -157,23 +160,24 @@ Deno.serve(async (req) => {
       const ins = await post("customers", {
         name: cu.name || (th.messages[0]?.from || "").replace(/<.*>/, "").trim() || "New lead (email)",
         email: cu.email || [...people][0] || null, phone: cu.phone, address: cu.address, city: cu.city, zip: cu.zip,
-        source: cu.source || "Email", ctype: cu.ctype, budget: cu.budget, timeline: cu.timeline, finishes: cu.finishes,
+        source: cu.source || "Email", ctype: cu.ctype, budget: num(cu.budget), timeline: cu.timeline,
         products: cu.products || [], services: cu.services || [], first_contact: first, stage: "new", tldr: j.tldr || null,
-        data: { auto: { at: now, src: box + "@" }, needsReview: j.confidence !== "high", ...(box === "service" ? { onlyService: true } : {}) },
+        data: { auto: { at: now, src: box + "@" }, ...(cu.finishes ? { finishes: cu.finishes } : {}), needsReview: j.confidence !== "high", ...(box === "service" ? { onlyService: true } : {}) },
       });
       c = ins[0]; created = true;
     } else {
       // Fill blanks; note conflicting values instead of overwriting contact info.
       const p: any = {}; const changes: any[] = [];
-      for (const k of ["name", "phone", "email", "address", "city", "zip", "source", "ctype", "budget", "timeline", "finishes"]) {
-        if (cu[k] == null || cu[k] === "") continue;
-        if (!c[k]) p[k] = cu[k];
-        else if (String(c[k]).toLowerCase().trim() !== String(cu[k]).toLowerCase().trim() && ["phone", "email", "address"].includes(k)) changes.push({ field: k, old: c[k], new: cu[k], at: now });
+      for (const k of ["name", "phone", "email", "address", "city", "zip", "source", "ctype", "budget", "timeline"]) {
+        const v = k === "budget" ? num(cu[k]) : cu[k];
+        if (v == null || v === "") continue;
+        if (!c[k]) p[k] = v;
+        else if (String(c[k]).toLowerCase().trim() !== String(v).toLowerCase().trim() && ["phone", "email", "address"].includes(k)) changes.push({ field: k, old: c[k], new: v, at: now });
       }
-      for (const k of ["measure_date", "delivery_date", "install_date"]) if (cu[k] && cu[k] !== c[k]) { p[k] = cu[k]; if (c[k]) changes.push({ field: k, old: c[k], new: cu[k], at: now }); }
+      for (const k of ["measure_date", "delivery_date", "install_date"]) if (isDate(cu[k]) && cu[k] !== c[k]) { p[k] = cu[k]; if (c[k]) changes.push({ field: k, old: c[k], new: cu[k], at: now }); }
       for (const k of ["products", "services"]) { const u = [...new Set([...(c[k] || []), ...(cu[k] || [])])]; if (u.length !== (c[k] || []).length) p[k] = u; }
       if (j.tldr) p.tldr = j.tldr;
-      p.data = { ...(c.data || {}), auto: { at: now, src: box + "@" }, ...(changes.length ? { changes: [...((c.data || {}).changes || []), ...changes].slice(-20) } : {}) };
+      p.data = { ...(c.data || {}), auto: { at: now, src: box + "@" }, ...(cu.finishes ? { finishes: cu.finishes } : {}), ...(changes.length ? { changes: [...((c.data || {}).changes || []), ...changes].slice(-20) } : {}) };
       p.updated_at = now;
       await patch("customers", c.id, p);
     }

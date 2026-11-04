@@ -50,7 +50,7 @@ function syncPayments_(window) {
     method: 'post',
     contentType: 'application/json',
     headers: { 'X-Google-Id-Token': ScriptApp.getIdentityToken() },
-    payload: JSON.stringify({ messages: messages }),
+    payload: JSON.stringify({ idToken: ScriptApp.getIdentityToken(), messages: messages }),
     muteHttpExceptions: true
   });
   Logger.log(res.getResponseCode() + ' ' + res.getContentText());
@@ -72,6 +72,21 @@ function installAll() {
   ScriptApp.newTrigger('sweep').timeBased().atHour(21).nearMinute(0).everyDays(1).create();
 }
 
+/** service@ only: inbox sweep at 9am and 9pm, no QuickBooks payments. */
+function installSweepOnly() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('sweep').timeBased().atHour(9).nearMinute(0).everyDays(1).create();
+  ScriptApp.newTrigger('sweep').timeBased().atHour(21).nearMinute(0).everyDays(1).create();
+}
+
+/** Run by hand to check setup: shows the account, permissions and schedules. */
+function checkSetup() {
+  var t = ScriptApp.getIdentityToken();
+  Logger.log('Account: ' + Session.getEffectiveUser().getEmail());
+  Logger.log('Identity token: ' + (t ? 'OK (' + t.length + ' chars)' : 'MISSING'));
+  Logger.log('Schedules: ' + ScriptApp.getProjectTriggers().map(function (x) { return x.getHandlerFunction(); }).join(', '));
+}
+
 /** Run once by hand (optional): catch up on the last 14 days. First replies are NOT made for old threads. */
 function sweepFirstRun() { sweep_(14, true); }
 
@@ -90,7 +105,7 @@ function sweep_(daysBack, noReplies) {
     var batch = threads.slice(i, i + 5);
     var reqs = batch.map(function (th) {
       return { url: HQ_SWEEP_URL, method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-        headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ thread: pack_(th), noReply: !!noReplies }) };
+        headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ idToken: token, thread: pack_(th), noReply: !!noReplies }) };
     });
     UrlFetchApp.fetchAll(reqs).forEach(function (r, k) {
       var out = {};
@@ -107,7 +122,7 @@ function sweep_(daysBack, noReplies) {
   if (!stats.partial) props.setProperty('lastSweep', String(Math.floor(started / 1000)));
   Logger.log(JSON.stringify(stats));
   UrlFetchApp.fetch(HQ_SWEEP_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ summary: stats }) });
+    headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ idToken: token, summary: stats }) });
 }
 
 function pack_(th) {

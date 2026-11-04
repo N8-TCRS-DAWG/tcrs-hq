@@ -65,7 +65,10 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
 
   // 1. Who is calling? Google verifies the identity token.
-  const idt = req.headers.get("X-Google-Id-Token") || "";
+  // Sent in the body (idToken): Google strips outgoing X-Google-* headers from UrlFetchApp.
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: "Bad body" }, 400); }
+  const idt = String(body?.idToken || req.headers.get("X-Hq-Id-Token") || req.headers.get("X-Google-Id-Token") || "");
   if (!idt) return json({ error: "Missing Google identity token" }, 401);
   const g = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idt)}`);
   const info = g.ok ? await g.json() : null;
@@ -75,8 +78,6 @@ Deno.serve(async (req) => {
   }
 
   // 2. Messages from the script: [{id, subject, date, body}]
-  let body: any;
-  try { body = await req.json(); } catch { return json({ error: "Bad body" }, 400); }
   const msgs = Array.isArray(body?.messages) ? body.messages.slice(0, 200) : [];
 
   const customers = await db("customers?select=id,name,email,lost");
