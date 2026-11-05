@@ -513,3 +513,10 @@ body.tv .chat-fab, body.tv .chat-box { display: none; }
 .tv-race[data-d="micro"] .tv-lane { gap: 3px; padding: 6px; }
 .tv-race[data-d="micro"] .tv-car { padding: 1px 6px; border-radius: 10px 5px 5px 10px; }
 .tv-race[data-d="micro"] .tv-car .n { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Customer profile: Save & close bar */
+.sheet-f { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 10px 16px; background: var(--card); border-top: 1px solid var(--line); }
+.sheet-f #saveState { margin-right: auto; }
+.sheet-f #saveState.dirty { color: var(--amber); font-weight: 600; }
+.btn.danger-t { color: var(--red); }
+body:has(.sheet-bg) #chatFab { bottom: 84px; }   /* keep the chat bubble off the Save & close bar */

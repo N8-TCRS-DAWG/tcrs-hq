@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261104181707';
+import * as D from './data.js?v=20261104182247';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
-  todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName,
-} from './core.js?v=20261104181707';
-import { openDrop } from './drop.js?v=20261104181707';
-import { renderLayout } from './layout.js?v=20261104181707';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261104181707';
+  todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName, pendingSaves,
+} from './core.js?v=20261104182247';
+import { openDrop } from './drop.js?v=20261104182247';
+import { renderLayout } from './layout.js?v=20261104182247';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261104182247';
 
 let curId = null;
 let tab = 'overview';
@@ -32,8 +32,67 @@ export async function openCustomer(id) {
   }
   draw();
 }
+async function saveAndClose() {
+  const btn = $('#cSave', sheet); if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const a = document.activeElement;
+  if (a && sheet?.contains(a) && a.blur) a.blur();
+  const note = $('#lSum', sheet)?.value.trim();
+  if (note && curId) await logEvent(curId, $('#lKind', sheet)?.value || 'note', note).catch(() => {});
+  await new Promise((r) => setTimeout(r, 30));
+  const res = await Promise.allSettled([...pendingSaves]);
+  const bad = res.find((r) => r.status === 'rejected');
+  if (bad) { toast('Not saved: ' + (bad.reason?.message || bad.reason)); if (btn) { btn.disabled = false; btn.textContent = 'Save & close'; } return; }
+  closeCustomer(); toast('Saved.');
+}
+
+/* Delete a lead for good (duplicates, junk, mis-reads). Snapshot first so Undo can put everything back for 8 s. */
+const CHILD = ['logs', 'actions', 'files', 'sizes', 'layouts', 'quotes'];
+function deleteLead(c) {
+  const kids = Object.fromEntries(CHILD.map((t) => [t, (S[t] || []).filter((r) => r.customer_id === c.id)]));
+  const pays = (S.payments || []).filter((p) => p.customer_id === c.id);
+  const counts = [['logs', 'history line'], ['actions', 'step'], ['files', 'file'], ['layouts', 'layout'], ['quotes', 'quote']].filter(([t]) => kids[t].length).map(([t, l]) => `${kids[t].length} ${l}${kids[t].length === 1 ? '' : 's'}`);
+  modal(`<h2>Delete ${esc(c.name || 'this lead')}?</h2>`,
+    `<p>This removes the lead${counts.length ? ` and its ${esc(counts.join(', '))}` : ''}. ${pays.length ? `${pays.length} QuickBooks payment${pays.length > 1 ? 's go' : ' goes'} back to the review tray. ` : ''}Use <b>Mark lost</b> instead if it was a real lead you lost.</p>
+     ${c.email || c.phone ? `<label class="small row"><input type="checkbox" id="dBlock" checked> Don't let the inbox read re-create it from ${esc(c.email || c.phone)}</label>` : ''}
+     <div class="row" style="margin-top:12px"><button class="btn danger" type="button" id="dOk">Delete lead</button><button class="btn" type="button" id="dNo">Cancel</button></div>`,
+    (box, close) => {
+      $('#dNo', box).onclick = close;
+      $('#dOk', box).onclick = async () => {
+        const block = $('#dBlock', box)?.checked;
+        const snap = { ...c }; delete snap.updated_at;
+        close(); closeCustomer();
+        try {
+          for (const p of pays) await D.update('payments', p.id, { customer_id: null, status: 'review', match_note: 'lead deleted' });
+          await D.remove('customers', c.id);
+        } catch (e) { toast('Could not delete: ' + e.message); return; }
+        let undone = false;
+        const finish = async () => {
+          if (undone) return;
+          await D.removeFiles(kids.files.map((f) => f.path)).catch(() => {});
+          if (block) {
+            const row = S.settings.find((r) => r.id === 'sweep');
+            const blocked = [...(row?.data?.blocked || []), { email: c.email || null, phone: c.phone || null, name: c.name || null, at: new Date().toISOString() }].slice(-200);
+            await D.upsert('settings', { id: 'sweep', data: { ...(row?.data || {}), blocked } }).catch(() => {});
+          }
+        };
+        const t = setTimeout(finish, 8000);
+        toast(`Deleted ${c.name || 'lead'}.`, async () => {
+          undone = true; clearTimeout(t);
+          try {
+            await D.insert('customers', snap);
+            for (const tb of CHILD) for (const r of kids[tb]) await D.insert(tb, r).catch(() => {});
+            for (const p of pays) await D.update('payments', p.id, { customer_id: c.id, status: p.status, match_note: p.match_note }).catch(() => {});
+            toast(`${c.name || 'Lead'} restored.`);
+          } catch (e) { toast('Undo failed: ' + e.message); }
+        });
+      };
+    });
+}
+
 function escClose(e) { if (e.key === 'Escape' && sheet && !document.querySelector('.sheet-bg.top-modal')) closeCustomer(); }
 export function closeCustomer(silent) {
+  const a = document.activeElement;
+  if (a && sheet?.contains(a) && a.blur) a.blur();   // fires "change" → the last edit saves
   sheet?.remove(); sheet = null; curId = null;
   document.removeEventListener('keydown', escClose);
   if (!silent && location.hash.startsWith('#c-')) location.hash = 'board';
@@ -62,8 +121,11 @@ function draw() {
       ${nextCard(c, st)}
       <div class="tabs" role="tablist">${tabSubs(c).map(([k, l, sub]) => `<button type="button" role="tab" data-tab="${k}" class="${tab === k ? 'on' : ''}"><span>${l}</span><span class="ts">${esc(sub)}</span></button>`).join('')}</div>
       <div id="tabBody"></div>
-    </div></div>`;
+    </div>
+    ${canWrite() ? `<div class="sheet-f"><span class="small muted" id="saveState">Changes save as you go.</span><button class="btn primary" type="button" id="cSave">Save &amp; close</button></div>` : ''}</div>`;
   $('#cClose', sheet).onclick = () => closeCustomer();
+  $('#cSave', sheet)?.addEventListener('click', saveAndClose);
+  sheet.addEventListener('input', (e) => { if (e.target.closest('.sheet') && !e.target.closest('#addLog')) { const ss = $('#saveState', sheet); if (ss) { ss.textContent = 'Unsaved edit. Click Save & close (or click out of the box).'; ss.classList.add('dirty'); } } });
   $$('[data-copy]', sheet).forEach((b) => (b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); toast('Copied.'); } catch { toast('Copy blocked by the browser.'); } }));
   const order = boardOrder();
   const ix = order.indexOf(c.id);
@@ -266,7 +328,7 @@ function overview(el, c) {
       <section class="panel"><h3>Card color</h3>
         <p class="small muted" style="margin:4px 0">Automatic from whose move each open step is. Override only if the steps don't tell the story.</p>
         <div class="row"><select id="ovr"><option value="">Automatic</option><option value="red" ${c.status_override === 'red' ? 'selected' : ''}>Red: we need to act</option><option value="yellow" ${c.status_override === 'yellow' ? 'selected' : ''}>Yellow: waiting on partner</option><option value="green" ${c.status_override === 'green' ? 'selected' : ''}>Green: waiting on customer</option></select>
-        ${c.lost ? `<button class="btn" type="button" id="unlose">Reopen lead</button>` : `<button class="btn danger" type="button" id="lose">Mark lost…</button>`}</div>
+        ${c.lost ? `<button class="btn" type="button" id="unlose">Reopen lead</button>` : `<button class="btn danger" type="button" id="lose">Mark lost…</button>`}${canWrite() ? `<button class="btn ghost danger-t" type="button" id="del" title="Delete for good: duplicates, junk, mis-read emails">Delete lead…</button>` : ''}</div>
       </section>
     </div></div>`;
   wireFields(el, c);
@@ -283,6 +345,7 @@ function overview(el, c) {
   $('#ovr', el).onchange = (e) => patchCustomer(c, { status_override: e.target.value || null });
   $('#lose', el)?.addEventListener('click', () => modal('<h2>Mark lost</h2>', `<label class="field"><span class="lbl">Why?</span><select id="lr"><option>Price</option><option>Went with another company</option><option>Project cancelled / postponed</option><option>No response</option><option>Not a fit</option><option>Other</option></select></label><input type="text" id="ln" placeholder="Note (optional)"><button class="btn danger" type="button" id="lok">Mark lost</button>`,
     (box, close) => { $('#lok', box).onclick = async () => { const reason = $('#lr', box).value; await patchCustomer(c, { lost: { reason, note: $('#ln', box).value, at: new Date().toISOString() } }); logEvent(c.id, 'system', `Marked lost: ${reason}`); close(); }; }));
+  $('#del', el)?.addEventListener('click', () => deleteLead(c));
   $('#unlose', el)?.addEventListener('click', async () => { await patchCustomer(c, { lost: null }); logEvent(c.id, 'system', 'Reopened'); });
   const lf = $('#addLog', el);
   if (lf) lf.onsubmit = async (e) => { e.preventDefault(); const s = $('#lSum', el).value.trim(); if (!s) return; await logEvent(c.id, $('#lKind', el).value, s); };
@@ -441,4 +504,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261104181707';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261104182247';

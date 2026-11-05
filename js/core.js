@@ -1,5 +1,5 @@
 // Shared state, helpers and business rules.
-import * as D from './data.js?v=20261104181707';
+import * as D from './data.js?v=20261104182247';
 
 export const S = {
   customers: [], actions: [], logs: [], files: [], sizes: [], layouts: [], quotes: [],
@@ -279,7 +279,10 @@ export function learnedContext() {
 export async function logEvent(cid, kind, summary, body) {
   try { await D.insert('logs', { customer_id: cid, kind, summary, body: body || null, at: new Date().toISOString(), by: S.me?.id }); } catch (e) { console.warn(e); }
 }
+export const pendingSaves = new Set();
 export async function patchCustomer(c, patch) {
   Object.assign(c, patch);
-  return D.update('customers', c.id, patch);
+  const p = D.update('customers', c.id, patch);
+  pendingSaves.add(p);
+  try { return await p; } finally { pendingSaves.delete(p); }
 }

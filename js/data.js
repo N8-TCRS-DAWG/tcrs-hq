@@ -126,11 +126,22 @@ function demoRecalc(cid) {
 }
 
 export async function remove(table, id) {
-  if (isDemo) { demo[table] = demo[table].filter((x) => x.id !== id); demoSave(); emit(table); saved(); return; }
+  if (isDemo) {
+    demo[table] = demo[table].filter((x) => x.id !== id);
+    if (table === 'customers') ['logs', 'actions', 'files', 'sizes', 'layouts', 'quotes'].forEach((t) => { if (demo[t]) { demo[t] = demo[t].filter((x) => x.customer_id !== id); emit(t); } });   // same as the DB's cascade
+    demoSave(); emit(table); saved(); return;
+  }
   const { error } = await sb.from(table).delete().eq('id', id);
   if (error) throw new Error(`${table}: ${error.message}`);
   emit(table);
   saved();
+}
+
+export async function removeFiles(paths) {
+  if (!paths.length) return;
+  if (isDemo) { paths.forEach((x) => demoBlobs.delete(x)); return; }
+  const { error } = await sb.storage.from('files').remove(paths);
+  if (error) console.warn('files remove:', error.message);
 }
 
 /* ───────── files ───────── */
