@@ -121,10 +121,25 @@ function sweep_(daysBack, noReplies) {
       }
     });
   }
+  if (Date.now() - started < 4.5 * 60 * 1000) {   // retry a few files Claude couldn't read last time
+    try { UrlFetchApp.fetch(HQ_SWEEP_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ idToken: token, reread: 3 }) }); } catch (e) {}
+  }
   if (!stats.partial) props.setProperty('lastSweep', String(Math.floor(started / 1000)));
   Logger.log(JSON.stringify(stats));
   UrlFetchApp.fetch(HQ_SWEEP_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ idToken: token, summary: stats }) });
+}
+
+/** Run by hand: Claude re-reads saved files (PDFs, photos) it couldn't read the first time. */
+function rereadFiles() {
+  var token = ScriptApp.getIdentityToken(), started = Date.now(), left = 1;
+  while (left && Date.now() - started < 4.5 * 60 * 1000) {
+    var r = UrlFetchApp.fetch(HQ_SWEEP_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ idToken: token, reread: 4 }) });
+    var out = {}; try { out = JSON.parse(r.getContentText()); } catch (e) {}
+    Logger.log(r.getResponseCode() + ' ' + r.getContentText());
+    if (r.getResponseCode() >= 300 || out.left == null) break;
+    left = out.left;
+  }
 }
 
 function pack_(th, msgs) {

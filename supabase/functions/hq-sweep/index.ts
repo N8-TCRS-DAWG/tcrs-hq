@@ -1,4 +1,4 @@
-import { decodeBase64 } from "jsr:@std/encoding@1/base64";
+import { decodeBase64, encodeBase64 } from "jsr:@std/encoding@1/base64";
 // TCRS HQ — Inbox sweep (Supabase Edge Function "hq-sweep")
 // Called at 9am and 9pm by the Apps Script in nathan@ (and service@) Gmail, once per email thread.
 // Claude reads the new messages and keeps the customer profile current: contact info, products,
@@ -120,6 +120,39 @@ function guessType(name: string, type: string, fromSupplier: boolean) {
 const FILE_READER = `You read one file attached to an email for Twin Cities Remodeling Supply (cabinets, countertops, flooring, appliances; Minnesota).
 Return ONLY JSON {"ftype":"Photo|Layout|Rendering|Supplier quote|Contractor quote|Estimate|Quote|Agreement|Scan|Other","summary":"1-2 plain lines: what it is + the key facts (totals with $, product/finish/color names, quote numbers, dates)","sizes":[{"what":"e.g. Sink wall","value":120,"unit":"in|ft|lf|sf|ea"}]}
 Never invent numbers. sizes only for room/wall/cabinet-run dimensions clearly written on the file (max 8), else [].`;
+// Claude reads one PDF/photo. Two tries (rate limits), errors go to the function log.
+async function readFile(b64: string, type: string, note: string) {
+  const blk = type === "application/pdf" ? { type: "document", source: { type: "base64", media_type: type, data: b64 } } : { type: "image", source: { type: "base64", media_type: type, data: b64 } };
+  for (let k = 0; k < 2; k++) {
+    try {
+      const j = await claude(MODEL_TRIAGE, FILE_READER, [blk, { type: "text", text: note }], 1500);
+      if (j) return j;
+      console.error("file read: no JSON in answer", note.slice(0, 80));
+    } catch (e) { console.error("file read failed", k, String(e).slice(0, 300)); }
+    await new Promise((r) => setTimeout(r, 2500));
+  }
+  return null;
+}
+// Re-read saved files Claude could not read the first time (a few per call).
+async function rereadFiles(n: number) {
+  const key = serverKey();
+  const rows = await db(`files?select=id,customer_id,path,name,mime,size,ftype&summary=is.null&mime=in.(${READABLE.join(",")})&size=lte.${MAX_READ}&order=created_at.asc&limit=${n}`);
+  let done = 0;
+  for (const f of rows) {
+    const r = await fetch(`${URL_}/storage/v1/object/files/${f.path}`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+    if (!r.ok) { console.error("reread download", r.status, f.path); continue; }
+    const b64 = encodeBase64(new Uint8Array(await r.arrayBuffer()));
+    const c = (await db(`customers?select=name&id=eq.${f.customer_id}`))[0];
+    const j = await readFile(b64, f.mime, `File "${f.name}" for ${c?.name || "a customer"}.`);
+    if (!j) { await patch("files", f.id, { summary: "" }); continue; }   // "" = tried, couldn't read
+    await patch("files", f.id, { summary: j.summary ? String(j.summary).slice(0, 600) : "", ...(j.ftype && f.ftype === "Other" ? { ftype: j.ftype } : {}) });
+    for (const z of (Array.isArray(j.sizes) ? j.sizes.slice(0, 8) : [])) if (z?.what && Number(z.value) > 0) await post("sizes", { customer_id: f.customer_id, what: String(z.what).slice(0, 120), value: Number(z.value), unit: ["in", "ft", "lf", "sf", "ea"].includes(z.unit) ? z.unit : "in", source: "email file" }).catch(() => null);
+    if (j.summary) await post("logs", { customer_id: f.customer_id, kind: "system", at: new Date().toISOString(), summary: `📎 Read ${String(f.name).slice(0, 70)} — ${String(j.summary).slice(0, 160)}` }).catch(() => null);
+    done++;
+  }
+  const left = (await db(`files?select=id&summary=is.null&mime=in.(${READABLE.join(",")})&size=lte.${MAX_READ}`)).length;
+  return { done, left };
+}
 async function storeAttachment(up: any, c: any, box: string, supDomains: Set<string>) {
   const key = serverKey();
   const bytes = decodeBase64(String(up.b64 || ""));
@@ -135,11 +168,8 @@ async function storeAttachment(up: any, c: any, box: string, supDomains: Set<str
   let ftype = guessType(safe, type, fromSupplier);
   let summary: string | null = null; let sizes: any[] = [];
   if (READABLE.includes(type) && bytes.length <= MAX_READ) {
-    try {
-      const blk = type === "application/pdf" ? { type: "document", source: { type: "base64", media_type: type, data: up.b64 } } : { type: "image", source: { type: "base64", media_type: type, data: up.b64 } };
-      const j = await claude(MODEL_TRIAGE, FILE_READER, [blk, { type: "text", text: `File "${up.name}" for ${c.name || "a customer"}, from ${up.from || "?"}, email "${up.subject || ""}".` }], 600);
-      if (j?.ftype) ftype = j.ftype; summary = j?.summary ? String(j.summary).slice(0, 600) : null; sizes = Array.isArray(j?.sizes) ? j.sizes.slice(0, 8) : [];
-    } catch { /* keep the file even if reading fails */ }
+    const j = await readFile(String(up.b64), type, `File "${up.name}" for ${c.name || "a customer"}, from ${up.from || "?"}, email "${up.subject || ""}".`);
+    if (j) { if (j.ftype) ftype = j.ftype; summary = j.summary ? String(j.summary).slice(0, 600) : null; sizes = Array.isArray(j.sizes) ? j.sizes.slice(0, 8) : []; }
   }
   const prev = await db(`files?select=version&customer_id=eq.${c.id}&ftype=eq.${encodeURIComponent(ftype)}&order=version.desc&limit=1`);
   await post("files", { customer_id: c.id, path, name: String(up.name || safe).slice(0, 200), ftype, version: (prev[0]?.version || 0) + 1, size: bytes.length, mime: type, hash: up.hash, summary, src: box + "@ email", by: null });
@@ -167,6 +197,8 @@ Deno.serve(async (req) => {
     await db("settings?id=eq.sweep", { method: "PATCH", body: JSON.stringify({ data: { ...row.data, runs }, updated_at: new Date().toISOString() }) });
     return json({ ok: true });
   }
+
+  if (body.reread) return json(await rereadFiles(Math.min(8, Number(body.reread) || 4)));
 
   // One attachment the script copied for us
   if (body.upload) {
