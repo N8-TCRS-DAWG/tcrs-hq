@@ -88,8 +88,13 @@ Deno.serve(async (req) => {
   for (const m of msgs) {
     const p = parse(String(m.subject || ""), String(m.body || ""));
     if (!p) { out.skipped++; continue; }
-    const dup = await db(`payments?select=id&or=(gmail_id.eq.${encodeURIComponent(m.id)}${p.ext_id ? `,ext_id.eq.${encodeURIComponent(p.ext_id)}` : ""})`);
-    if (dup.length) { out.duplicate++; continue; }
+    // Paid date: from the email body when QuickBooks states it, else the email's own date.
+    const day = p.paid_date || (/^\d{4}-\d{2}-\d{2}/.test(String(m.date || "")) ? String(m.date).slice(0, 10) : null);
+    const dup = await db(`payments?select=id,paid_date&or=(gmail_id.eq.${encodeURIComponent(m.id)}${p.ext_id ? `,ext_id.eq.${encodeURIComponent(p.ext_id)}` : ""})`);
+    if (dup.length) {
+      if (!dup[0].paid_date && day) await db(`payments?id=eq.${dup[0].id}`, { method: "PATCH", body: JSON.stringify({ paid_date: day }) });
+      out.duplicate++; continue;
+    }
 
     let match: any[] = [];
     let note = "";
@@ -101,14 +106,14 @@ Deno.serve(async (req) => {
     await db("payments", { method: "POST", body: JSON.stringify({
       source: "quickbooks", gmail_id: m.id, ext_id: p.ext_id, subject: String(m.subject || "").slice(0, 300),
       customer_id: ok ? match[0].id : null, customer_name: p.customer_name, customer_email: p.customer_email,
-      invoice_no: p.invoice_no, amount: p.amount, paid_date: p.paid_date, method: p.method,
+      invoice_no: p.invoice_no, amount: p.amount, paid_date: day, method: p.method,
       status: ok ? "applied" : "review", match_note: note,
     }) });
     if (ok) {
       out.applied++; touched.add(match[0].id);
       await db("logs", { method: "POST", body: JSON.stringify({
         customer_id: match[0].id, kind: "system", at: new Date().toISOString(),
-        summary: `QuickBooks payment $${p.amount.toFixed(2)} received (invoice ${p.invoice_no || "?"}, ${p.paid_date || "date ?"}) — ${note}`,
+        summary: `QuickBooks payment $${p.amount.toFixed(2)} received (invoice ${p.invoice_no || "?"}, ${day || "date ?"}) — ${note}`,
       }) });
     } else out.review++;
   }

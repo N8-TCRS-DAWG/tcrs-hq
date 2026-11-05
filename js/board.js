@@ -1,8 +1,8 @@
 // Board (kanban) and Race (glance / office TV).
-import * as D from './data.js?v=20261104144601';
-import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104144601';
-import { moveStage } from './customer.js?v=20261104144601';
-import { openDrop } from './drop.js?v=20261104144601';
+import * as D from './data.js?v=20261104181707';
+import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104181707';
+import { moveStage } from './customer.js?v=20261104181707';
+import { openDrop } from './drop.js?v=20261104181707';
 
 const F = { st: null, q: '', lost: false };
 // Only "Show lost" is remembered. Search and bubble filters reset on each visit so the board always opens full.
@@ -273,10 +273,9 @@ export function renderTV(v) {
         let cs = live.filter((c) => (c.stage || 'new') === s.k);
         if (s.k === 'installed') cs = cs.filter((c) => openActions(c.id).length || (c.updated_at || '') >= thirty.slice(0, 10));
         cs.sort((a, b) => (a.first_contact || '').localeCompare(b.first_contact || ''));
-        const more = Math.max(0, cs.length - 6);
         return `<div class="tv-lane ${i === STAGES.length - 1 ? 'fin' : ''}"><div class="tv-lh">${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.short)} <b>${cs.length}</b></div>
-          ${cs.slice(0, 6).map((c) => { const st = status(c); const d = keyDates(c); return `<div class="tv-car st-${st.k}"><div class="n">${esc(c.name || 'No name')}</div><div class="p">${esc((c.products || []).map((p) => PROD_SHORT[p] || p).join(' · ') || '—')}</div>${d.length ? `<div class="k">${d.map((x) => `<span class="${x.warn ? 'warn' : ''}">${esc(x.text)}</span>`).join('')}</div>` : ''}</div>`; }).join('')}
-          ${more ? `<div class="tv-more">+${more} more</div>` : ''}</div>`;
+          ${cs.map((c) => { const st = status(c); const d = keyDates(c); return `<div class="tv-car st-${st.k}"><div class="n">${esc(c.name || 'No name')}</div><div class="p">${esc((c.products || []).map((p) => PROD_SHORT[p] || p).join(' · ') || '—')}</div>${d.length ? `<div class="k">${d.map((x) => `<span class="${x.warn ? 'warn' : ''}">${esc(x.text)}</span>`).join('')}</div>` : ''}</div>`; }).join('')}
+</div>`;
       }).join('')}
     </section>
     <section class="tv-week"><div class="tv-wh">Next 7 days</div>
@@ -284,6 +283,7 @@ export function renderTV(v) {
     </section>
   </div>`;
 
+  fitTV();
   tvTimers.forEach(clearInterval); tvTimers = [];
   const tick = () => {
     const el = document.getElementById('clock'); if (!el) return;
@@ -297,6 +297,14 @@ export function renderTV(v) {
   if (!wakeLock && navigator.wakeLock) navigator.wakeLock.request('screen').then((w) => { wakeLock = w; w.addEventListener('release', () => (wakeLock = null)); }).catch(() => {});
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && document.body.classList.contains('tv') && navigator.wakeLock) navigator.wakeLock.request('screen').then((w) => (wakeLock = w)).catch(() => {}); });
+/* TV: every card stays on screen. Shrink cards step by step until no stage overflows. */
+const TV_DENSITY = ['full', 'compact', 'slim', 'mini', 'micro'];
+function fitTV() {
+  const race = document.querySelector('.tv-race'); if (!race) return;
+  const over = () => [...race.querySelectorAll('.tv-lane')].some((l) => l.scrollHeight > l.clientHeight + 1);
+  for (const d of TV_DENSITY) { race.dataset.d = d; if (!over()) break; }
+}
+window.addEventListener('resize', () => { if (document.body.classList.contains('tv')) { clearTimeout(fitTV.t); fitTV.t = setTimeout(fitTV, 200); } });
 function addDaysISO(iso, k) { const d = new Date(iso + 'T12:00'); d.setDate(d.getDate() + k); return d.toISOString().slice(0, 10); }
 
 /* Fit every card on screen without page scrolling: full → compact → mini cards. Phones get stage rows of name pills. */

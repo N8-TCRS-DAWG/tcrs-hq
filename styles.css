@@ -498,3 +498,18 @@ body.tv .chat-fab, body.tv .chat-box { display: none; }
 .chat-in { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); align-items: flex-end; }
 .chat-in textarea { flex: 1; resize: none; font: inherit; }
 #chMic.on { background: var(--red); color: #fff; border-color: var(--red); }
+
+/* TV density: all cards fit (set by fitTV) */
+.tv-race[data-d="compact"] .tv-car .p { display: none; }
+.tv-race[data-d="compact"] .tv-car .n { font-size: 19px; }
+.tv-race[data-d="slim"] .tv-lane, .tv-race[data-d="mini"] .tv-lane, .tv-race[data-d="micro"] .tv-lane { gap: 5px; }
+.tv-race[data-d="slim"] .tv-car .p, .tv-race[data-d="mini"] .tv-car .p, .tv-race[data-d="micro"] .tv-car .p { display: none; }
+.tv-race[data-d="slim"] .tv-car { padding: 5px 9px; }
+.tv-race[data-d="slim"] .tv-car .n { font-size: 17px; }
+.tv-race[data-d="slim"] .tv-car .k { font-size: 14px; }
+.tv-race[data-d="mini"] .tv-car, .tv-race[data-d="micro"] .tv-car { padding: 3px 8px; border-left-width: 7px; }
+.tv-race[data-d="mini"] .tv-car .k, .tv-race[data-d="micro"] .tv-car .k { display: none; }
+.tv-race[data-d="mini"] .tv-car .n { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-race[data-d="micro"] .tv-lane { gap: 3px; padding: 6px; }
+.tv-race[data-d="micro"] .tv-car { padding: 1px 6px; border-radius: 10px 5px 5px 10px; }
+.tv-race[data-d="micro"] .tv-car .n { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
