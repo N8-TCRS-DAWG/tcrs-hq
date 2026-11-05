@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261104182925';
+import * as D from './data.js?v=20261104184942';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName, pendingSaves,
-} from './core.js?v=20261104182925';
-import { openDrop } from './drop.js?v=20261104182925';
-import { renderLayout } from './layout.js?v=20261104182925';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261104182925';
+} from './core.js?v=20261104184942';
+import { openDrop } from './drop.js?v=20261104184942';
+import { renderLayout } from './layout.js?v=20261104184942';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261104184942';
 
 let curId = null;
 let tab = 'overview';
@@ -302,6 +302,7 @@ function overview(el, c) {
         <label class="field"><span class="lbl">Customer type</span><select data-f="ctype"><option value="">—</option>${CTYPES.map((t) => `<option ${c.ctype === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         ${field('Budget ($)', 'budget', c.budget, 'text', 'inputmode="decimal"')}${field('Timeline', 'timeline', c.timeline)}
         ${field('First contact', 'first_contact', c.first_contact, 'date')}
+        <label class="field"><span class="lbl">Salesperson (race credit)</span><select data-f="owner" ${canWrite() ? '' : 'disabled'}><option value="">Unassigned</option>${S.profiles.filter((p) => p.role !== 'tv').map((p) => `<option value="${p.id}" ${c.owner === p.id ? 'selected' : ''}>${esc(p.name || 'Someone')}</option>`).join('')}</select></label>
       </div>
       <datalist id="srcList">${['Facebook', 'Facebook Marketplace', 'Nextdoor', 'Google', 'Website form', 'Referral', 'Repeat customer', 'Home show', 'Walk-in', 'Phone'].map((s) => `<option>${s}</option>`).join('')}</datalist>
       <div class="lbl" style="margin-top:10px">Products</div>
@@ -505,4 +506,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261104182925';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261104184942';

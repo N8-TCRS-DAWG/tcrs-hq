@@ -1,8 +1,8 @@
 // Board (kanban) and Race (glance / office TV).
-import * as D from './data.js?v=20261104182925';
-import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast } from './core.js?v=20261104182925';
-import { moveStage } from './customer.js?v=20261104182925';
-import { openDrop } from './drop.js?v=20261104182925';
+import * as D from './data.js?v=20261104184942';
+import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast, settings, personName } from './core.js?v=20261104184942';
+import { moveStage } from './customer.js?v=20261104184942';
+import { openDrop } from './drop.js?v=20261104184942';
 
 const F = { st: null, q: '', lost: false };
 // Only "Show lost" is remembered. Search and bubble filters reset on each visit so the board always opens full.
@@ -31,24 +31,8 @@ function visible() {
 function card(c) {
   const st = status(c);
   const sc = score(c);
-  const nx = openActions(c.id)[0];
-  const rv = revisionInfo(c);
-  const early = stageIdx(c.stage) <= 4;
-  const day = c.first_contact ? daysBetween(c.first_contact, todayISO()) : null;
-  const dates = keyDates(c);
-  const v = value(c);
-  return `<article class="card st-${st.k}" draggable="${canWrite() && innerWidth > 700}" data-id="${c.id}" tabindex="0" aria-label="${esc(c.name)}, ${STATUS_TEXT[st.k]}">
-    <div class="t"><span class="name">${esc(c.name || 'No name yet')}</span>${early ? `<span class="score" title="Lead score ${sc.total}/100: likely to buy, budget, repeat customer, intake quality">${sc.total}</span>` : ''}</div>
-    ${(c.products || []).length ? `<div class="prods">${c.products.map((p) => `<span class="chip">${esc(p)}</span>`).join('')}</div>` : ''}
-    <div class="next" title="${esc(nx ? nx.title : st.why)}"><span class="dot" style="margin-top:4px"></span><span class="nxt">${nx ? esc(nx.title) + (nx.due ? ` · <span class="${nx.due < todayISO() ? 'warn' : ''}">${fmtDate(nx.due)}</span>` : '') : `<b>${esc(st.why)}</b>`}</span></div>
-    <div class="meta">
-      ${day != null ? `<span title="Days since first contact">${day === 0 ? 'New today' : day + (day === 1 ? ' day' : ' days') + ' in'}</span>` : ''}
-      ${v ? `<span>${money0(v)}</span>` : ''}
-      ${received(c) ? `<span class="got">Paid ${money0(received(c))}</span>` : (c.data?.paidUnknown ? '<span class="warn">Paid: amount?</span>' : '')}
-      ${rv.used ? `<span class="${rv.over ? 'warn' : ''}">Rev ${rv.used}/${rv.allowed}</span>` : ''}
-      ${dates.map((d) => `<span class="${d.warn ? 'warn' : ''}">${esc(d.text)}</span>`).join('')}
-      ${c.lost ? '<span class="warn">Lost</span>' : ''}
-    </div>
+  return `<article class="card st-${st.k}" draggable="${canWrite() && innerWidth > 700}" data-id="${c.id}" tabindex="0" title="${esc(st.why || STATUS_TEXT[st.k])}" aria-label="${esc(c.name)}, ${STATUS_TEXT[st.k]}, lead score ${sc.total}">
+    <div class="t"><span class="name">${esc(c.name || 'No name yet')}</span><span class="score" title="Lead score ${sc.total}/100: likely to buy, budget, repeat customer, intake quality">${sc.total}</span></div>
   </article>`;
 }
 
@@ -200,41 +184,98 @@ function sortCards(a, b) {
 
 /* ───────── race / TV ───────── */
 let clockTimer = null;
-export function renderRace(v, tv) {
-  const list = S.customers.filter((c) => !c.lost);
-  const counts = { red: 0, yellow: 0, green: 0 };
-  list.forEach((c) => { const k = status(c).k; if (counts[k] != null) counts[k]++; });
-  const thirty = new Date(Date.now() - 30 * 864e5).toISOString();
-  v.innerHTML = `
-  <div class="race-top">
-    ${tv ? `<div class="tv-head"><img src="img/logo-green.png" alt="TCRS" style="border-radius:8px"><span class="clock" id="clock"></span></div>` : '<h2>The race to paid</h2>'}
-    <div class="row">${['red', 'yellow', 'green'].map((k) => `<span class="pill st-${k}" style="font-size:${tv ? 16 : 13}px"><span class="dot"></span>${counts[k]} ${STATUS_TEXT[k]}</span>`).join('')}</div>
-    ${tv ? '' : '<a class="btn" href="#tv">Full-screen TV mode</a>'}
-  </div>
-  <div class="race-wrap"><div class="race">
-    ${STAGES.map((s, i) => {
-      let cs = list.filter((c) => (c.stage || 'new') === s.k);
-      if (s.k === 'installed') cs = cs.filter((c) => openActions(c.id).length || (c.updated_at || '') >= thirty);
-      cs.sort((a, b) => (a.first_contact || '').localeCompare(b.first_contact || ''));
-      return `<div class="rcol ${cs.length ? '' : 'empty'}"><div class="lane-h ${i === STAGES.length - 1 ? 'fin' : ''}">${i === STAGES.length - 1 ? '🏁 ' : ''}${esc(s.short)} <span class="num muted">${cs.length}</span></div><div class="lane">${cs.map((c) => {
-        const st = status(c);
-        const d = keyDates(c);
-        return `<div class="car st-${st.k}" data-id="${c.id}" title="${esc(STATUS_TEXT[st.k])}">
-          <div class="n">${esc(c.name || 'No name')}</div>
-          <div class="d"><span>${esc((c.products || []).map((p) => PROD_SHORT[p] || p).join(' · ') || '—')}</span></div>
-          <div class="d"><span>Day ${c.first_contact ? daysBetween(c.first_contact, todayISO()) : '?'} · since ${fmtDate(c.first_contact)}</span>${d.map((x) => `<span class="${x.warn ? 'warn' : ''}">${esc(x.text)}</span>`).join('')}</div>
-        </div>`;
-      }).join('')}</div></div>`;
-    }).join('')}
-  </div></div>
-  ${tv ? '<p class="small muted" style="margin-top:10px">Updates live. The last column shows jobs finished in the last 30 days.</p>' : ''}`;
-  if (!tv) fitView(v);
-  if (!tv) { $$('.car', v).forEach((el) => (el.onclick = () => (location.hash = 'c-' + el.dataset.id))); if (canWrite()) wireFileDrops(v, '.car', '.rcol'); }
-  clearInterval(clockTimer);
-  if (tv) {
-    const tick = () => { const el = $('#clock'); if (el) el.textContent = new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
-    tick(); clockTimer = setInterval(tick, 20000);
+/* Race: each salesperson's car moves left → right on revenue PAID this month (resets on the 1st). */
+export function paidDay(c) {
+  if (c.paid?.at) return c.paid.at.slice(0, 10);
+  const mv = S.logs.filter((l) => l.customer_id === c.id && l.kind === 'system' && /→ Paid\b|→ paid\b/.test(l.summary || '')).sort((a, b) => b.at.localeCompare(a.at))[0];
+  return mv ? mv.at.slice(0, 10) : null;
+}
+export function monthRevenue(month) {
+  const rows = [];
+  for (const p of S.payments) if (p.status === 'applied' && (p.paid_date || '').startsWith(month)) rows.push({ cid: p.customer_id, amt: Number(p.amount) || 0, day: p.paid_date, how: 'QuickBooks' });
+  for (const c of S.customers) {
+    const other = Number(c.paid?.other) || (c.paid && c.paid.qb == null ? Number(c.paid.amount) || 0 : 0);
+    const d = paidDay(c);
+    if (other > 0 && d && d.startsWith(month)) rows.push({ cid: c.id, amt: other, day: d, how: c.paid?.at ? 'entered' : 'entered (date = moved to Paid)' });
   }
+  return rows.map((r) => ({ ...r, c: S.customers.find((x) => x.id === r.cid) })).filter((r) => r.c);
+}
+export function renderRace(v) {
+  const t = todayISO(); const month = t.slice(0, 7);
+  const mName = new Date(t + 'T12:00').toLocaleString('en-US', { month: 'long' });
+  const dim = new Date(+t.slice(0, 4), +t.slice(5, 7), 0).getDate(); const day = +t.slice(8, 10);
+  const rows = monthRevenue(month);
+  const people = S.profiles.filter((p) => p.role !== 'tv');
+  const isMine = (c, id) => (id === 'none' ? !c.owner || !people.some((p) => p.id === c.owner) : c.owner === id);
+  const ids = [...people.map((p) => p.id), ...(rows.some((r) => isMine(r.c, 'none')) ? ['none'] : [])];
+  const lanes = ids.map((id) => {
+    const mine = rows.filter((r) => isMine(r.c, id));
+    const pit = S.customers.filter((c) => !c.lost && isMine(c, id) && ['accepted', 'ordered'].includes(c.stage) && !received(c));
+    const total = mine.reduce((a, r) => a + r.amt, 0);
+    const jobs = new Set(mine.map((r) => r.cid)).size;
+    return { id, name: id === 'none' ? 'Unassigned' : (people.find((p) => p.id === id)?.name || 'Someone'), total, jobs, avg: jobs ? total / jobs : 0, best: Math.max(0, ...mine.map((r) => r.amt)), pitVal: pit.reduce((a, c) => a + value(c), 0), pitN: pit.length };
+  }).sort((a, b) => b.total - a.total || b.pitVal - a.pitVal);
+  const goal = Number(settings().raceGoal) || 0;
+  const leader = lanes[0]?.total || 0;
+  const far = Math.max(leader, ...lanes.map((l) => l.total + l.pitVal));
+  const finish = goal || Math.max(10000, Math.ceil(far * 1.1 / 5000) * 5000);
+  const team = lanes.reduce((a, l) => a + l.total, 0);
+  const pct = (x) => Math.min(97, (x / finish) * 100);
+  const pace = (day / dim) * 100;
+  const left = dim - day;
+  const CARS = ['#c0392b', '#2471a3', '#d4a017', '#1e8449', '#7d3c98', '#ca6f1e'];
+  const initials = (n) => String(n || '?').trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  v.innerHTML = `
+  <div class="gp-top">
+    <div><div class="gp-kicker">TCRS Grand Prix</div><h2>${esc(mName)} race</h2></div>
+    <div class="gp-stats">
+      <div class="gp-stat"><span>Team paid</span><b>${money0(team)}</b></div>
+      <div class="gp-stat"><span>Laps left</span><b>${left} day${left === 1 ? '' : 's'}</b></div>
+      <div class="gp-stat"><span>Finish line</span><b>${money0(finish)}</b>${goal ? '' : '<i>auto</i>'}</div>
+      ${canWrite() ? `<button class="btn sm" type="button" id="rGoal">${goal ? 'Change goal' : 'Set monthly goal'}</button>` : ''}
+    </div>
+  </div>
+  <p class="small muted gp-sub">Thrust = revenue <b>paid</b> since ${esc(mName)} 1. Resets on the 1st. Ghost car = accepted or ordered jobs not paid yet (fuel in the pit).${goal ? ' The dashed line is the pace car: where you need to be today to hit the goal.' : ''}</p>
+  <section class="gp-track" style="--pace:${pace}%">
+    ${lanes.map((l, i) => {
+      const col = l.id === 'none' ? '#7f8c8d' : CARS[people.findIndex((p) => p.id === l.id) % CARS.length];
+      const gap = i > 0 && leader ? leader - l.total : 0;
+      return `<div class="gp-lane">
+      <div class="gp-pos"><b>P${i + 1}</b>${i === 0 && l.total ? '<span title="Leader">🏆</span>' : ''}</div>
+      <div class="gp-road" title="${esc(l.name)}: ${money0(l.total)} paid in ${esc(mName)}">
+        <div class="gp-start"></div><div class="gp-dash"></div>
+        ${goal ? '<div class="gp-pace"><span>pace</span></div>' : ''}
+        <div class="gp-finish"></div>
+        ${l.pitVal ? `<div class="gp-car ghost" style="--x:${pct(l.total + l.pitVal)}%;--c:${col}" title="${l.pitN} accepted/ordered, not paid yet: ${money0(l.pitVal)}"><span class="gp-body"></span></div>` : ''}
+        <div class="gp-trail" style="--x:${pct(l.total)}%;--c:${col}"></div>
+        <div class="gp-car ${pct(l.total) > 70 ? 'tagleft' : ''}" style="--x:${pct(l.total)}%;--c:${col}"><span class="gp-body"><span class="gp-num">${esc(initials(l.name))}</span></span><span class="gp-tag"><b>${esc(l.name)}</b> ${money0(l.total)}</span></div>
+      </div>
+      <div class="gp-info">
+        <span><b>${l.jobs}</b> paid job${l.jobs === 1 ? '' : 's'}</span>
+        ${l.jobs ? `<span>avg ${money0(l.avg)}</span><span>best ${money0(l.best)}</span>` : ''}
+        ${gap ? `<span class="gp-gap">−${money0(gap)} to P1</span>` : ''}
+        ${l.pitVal ? `<span class="gp-pit">⛽ ${money0(l.pitVal)} in the pit (${l.pitN})</span>` : ''}
+      </div>
+    </div>`;
+    }).join('') || '<p class="muted">No salespeople yet. Invite them under Prices &amp; partners → Settings.</p>'}
+    <div class="gp-scale small muted"><span>$0</span><span>${money0(finish / 2)}</span><span>🏁 ${money0(finish)}</span></div>
+  </section>
+  <section class="panel race-log"><h3>Lap log: paid in ${esc(mName)}</h3>
+    ${rows.length ? `<table class="simple"><tbody>${rows.sort((a, b) => b.day.localeCompare(a.day)).map((r) => `<tr data-id="${r.cid}"><td>${fmtDate(r.day)}</td><td><b>${esc(r.c.name || '')}</b></td><td class="muted small">${esc(personName(r.c.owner) || 'Unassigned')} · ${esc(r.how)}</td><td class="n">${money0(r.amt)}</td></tr>`).join('')}</tbody></table>` : '<p class="small muted">Nothing paid yet this month. QuickBooks payments land here by themselves; payments typed in by hand count on the day entered or the day the job moved to Paid.</p>'}
+    <p class="small muted" style="margin:8px 0 0">Wrong driver on a job? Open the customer and change <b>Salesperson</b> (Contact panel).</p>
+  </section>`;
+  // cars roll out from the start line
+  const cars = $$('.gp-car, .gp-trail', v);
+  cars.forEach((el) => el.classList.add('at-start'));
+  requestAnimationFrame(() => requestAnimationFrame(() => cars.forEach((el) => el.classList.remove('at-start'))));
+  $$('.race-log tr[data-id]', v).forEach((r) => (r.onclick = () => (location.hash = 'c-' + r.dataset.id)));
+  $('#rGoal', v)?.addEventListener('click', () => {
+    const b = document.createElement('div'); b.className = 'sheet-bg top-modal';
+    b.innerHTML = `<div class="modal narrow"><div class="modal-h"><h2>Monthly goal per salesperson</h2><button class="x" type="button" aria-label="Close">×</button></div><div class="modal-b"><label class="field"><span class="lbl">Paid revenue per person per month ($)</span><input type="text" inputmode="decimal" id="gv" value="${goal || ''}" placeholder="e.g. 40000"></label><p class="small muted">Sets the finish line and the pace car. Leave blank to scale to the leader.</p><button class="btn primary" type="button" id="gok">Save</button></div></div>`;
+    document.body.appendChild(b);
+    const close = () => b.remove(); b.querySelector('.x').onclick = close; b.onclick = (e) => { if (e.target === b) close(); };
+    b.querySelector('#gok').onclick = async () => { const n = Number(String(b.querySelector('#gv').value).replace(/[^0-9.]/g, '')) || null; const row = S.settings.find((r) => r.id === 'main'); await D.upsert('settings', { id: 'main', data: { ...(row?.data || {}), raceGoal: n } }); close(); };
+  });
 }
 
 
