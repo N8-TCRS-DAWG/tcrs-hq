@@ -98,14 +98,15 @@ function sweep_(daysBack, noReplies) {
   var started = Date.now();
   var since = daysBack ? started / 1000 - daysBack * 86400 : (Number(props.getProperty('lastSweep')) || started / 1000 - 2 * 86400) - 3600;
   var threads = GmailApp.search(SWEEP_QUERY + ' after:' + Math.floor(since), 0, 150);
-  var stats = { threads: threads.length, created: 0, updated: 0, ignored: 0, seen: 0, drafts: 0, sent: 0, errors: 0, names: [] };
+  var stats = { threads: threads.length, created: 0, updated: 0, ignored: 0, seen: 0, drafts: 0, sent: 0, errors: 0, files: 0, bigFiles: 0, names: [] };
   var token = ScriptApp.getIdentityToken();
   for (var i = 0; i < threads.length; i += 5) {
     if (Date.now() - started > 4.5 * 60 * 1000) { stats.partial = true; break; }   // Apps Script stops at 6 min
     var batch = threads.slice(i, i + 5);
-    var reqs = batch.map(function (th) {
+    var msgSets = batch.map(function (th) { return th.getMessages().slice(-6); });   // last 6 messages: new ones + context
+    var reqs = batch.map(function (th, k) {
       return { url: HQ_SWEEP_URL, method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-        headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ idToken: token, thread: pack_(th), noReply: !!noReplies }) };
+        headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ idToken: token, thread: pack_(th, msgSets[k]), noReply: !!noReplies }) };
     });
     UrlFetchApp.fetchAll(reqs).forEach(function (r, k) {
       var out = {};
@@ -113,6 +114,7 @@ function sweep_(daysBack, noReplies) {
       if (r.getResponseCode() >= 300) { stats.errors++; Logger.log('HQ error: ' + r.getContentText()); return; }
       if (out.action && stats[out.action] != null) stats[out.action]++;
       if (out.action === 'created') stats.names.push(out.customer);
+      if (out.cid && out.want && out.want.length && Date.now() - started < 4.5 * 60 * 1000) uploadFiles_(out.cid, out.want, msgSets[k], batch[k].getFirstMessageSubject(), token, stats);
       if (out.reply && out.reply.body && !noReplies) {
         if (out.reply.mode === 'send') { batch[k].reply(out.reply.body); stats.sent++; }
         else { batch[k].createDraftReply(out.reply.body); stats.drafts++; }
@@ -125,8 +127,7 @@ function sweep_(daysBack, noReplies) {
     headers: { 'X-Google-Id-Token': token }, payload: JSON.stringify({ idToken: token, summary: stats }) });
 }
 
-function pack_(th) {
-  var msgs = th.getMessages().slice(-6);   // last 6 messages: new ones + context
+function pack_(th, msgs) {
   return {
     id: th.getId(),
     subject: th.getFirstMessageSubject(),
@@ -137,8 +138,34 @@ function pack_(th) {
         from: m.getFrom(), to: m.getTo(), cc: m.getCc(),
         date: m.getDate().toISOString(),
         body: m.getPlainBody().slice(0, 8000),
-        attachments: m.getAttachments({ includeInlineImages: false }).slice(0, 10).map(function (a) { return a.getName(); })
+        files: m.getAttachments({ includeInlineImages: false }).slice(0, 10).map(function (a, i) {
+          var size = a.getSize();
+          var hash = size <= 25 * 1024 * 1024 ? hex_(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, a.getBytes())) : a.getName() + ':' + size;
+          return { i: i, name: a.getName(), size: size, type: a.getContentType(), hash: hash };
+        })
       };
     })
   };
+}
+
+function hex_(bytes) { return bytes.map(function (b) { return ('0' + (b & 0xff).toString(16)).slice(-2); }).join(''); }
+
+/** Copies the attachments HQ asked for into the lead's Files tab (HQ reads PDFs and photos). */
+function uploadFiles_(cid, want, msgs, subject, token, stats) {
+  var reqs = [];
+  want.forEach(function (w) {
+    if (w.big) { stats.bigFiles++; return; }
+    var m = msgs.filter(function (x) { return (x.getHeader('Message-ID') || x.getId()) === w.mid; })[0];
+    var a = m && m.getAttachments({ includeInlineImages: false })[w.i];
+    if (!a) return;
+    reqs.push({ url: HQ_SWEEP_URL, method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      payload: JSON.stringify({ idToken: token, upload: { cid: cid, name: a.getName(), type: a.getContentType(), hash: w.hash, from: m.getFrom(),
+        date: m.getDate().toISOString(), subject: subject, b64: Utilities.base64Encode(a.getBytes()) } }) });
+  });
+  for (var i = 0; i < reqs.length; i += 3) {
+    UrlFetchApp.fetchAll(reqs.slice(i, i + 3)).forEach(function (r) {
+      if (r.getResponseCode() < 300 && /"stored":true/.test(r.getContentText())) stats.files++;
+      else if (r.getResponseCode() >= 300) Logger.log('File error: ' + r.getContentText());
+    });
+  }
 }

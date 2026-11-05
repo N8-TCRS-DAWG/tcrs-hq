@@ -1,3 +1,4 @@
+import { decodeBase64 } from "jsr:@std/encoding@1/base64";
 // TCRS HQ — Inbox sweep (Supabase Edge Function "hq-sweep")
 // Called at 9am and 9pm by the Apps Script in nathan@ (and service@) Gmail, once per email thread.
 // Claude reads the new messages and keeps the customer profile current: contact info, products,
@@ -29,7 +30,7 @@ async function db(path: string, init: RequestInit = {}) {
 const post = (t: string, b: unknown) => db(t, { method: "POST", body: JSON.stringify(b) });
 const patch = (t: string, id: string, b: unknown) => db(`${t}?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(b) });
 
-async function claude(model: string, system: string, user: string, max = 2500) {
+async function claude(model: string, system: string, user: string | any[], max = 2500) {
   const key = Deno.env.get("ANTHROPIC_API_KEY");
   if (!key) throw new Error("ANTHROPIC_API_KEY missing");
   const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -90,6 +91,63 @@ const digits = (s: string) => String(s || "").replace(/\D/g, "").slice(-10);
 const num = (x: any) => { const t = String(x ?? ""); const n = Number(t.replace(/[^0-9.]/g, "")) * (/\d\s*k\b/i.test(t) ? 1000 : 1); return n > 0 ? n : null; };
 const isDate = (x: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
 
+// ── Email attachments → the lead's Files tab ──
+const MAX_COPY = 10 * 1024 * 1024;      // bytes per file we copy (request-size safety margin; bigger files stay in Gmail)
+const MAX_READ = 5 * 1024 * 1024;       // bytes per file Claude reads
+const READABLE = ["application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp"];
+function wantedAttachments(msgs: any[], have: Set<string>) {
+  const out: any[] = []; const seenHash = new Set<string>();
+  for (const m of msgs) for (const a of (m.files || [])) {
+    const t = String(a.type || ""); const size = Number(a.size || 0);
+    if (!a.hash || have.has(a.hash) || seenHash.has(a.hash)) continue;
+    if (/\.(ics|vcf|p7s|asc|sig|eml)$/i.test(a.name || "")) continue;                       // invites, signatures, forwarded mail
+    if (t.startsWith("image/") && (size < 20000 || /^(image|outlook|logo|signature)[\w-]*\.(png|jpe?g|gif)$/i.test(a.name || "") && size < 60000)) continue; // signature logos
+    if (size < 3000) continue;
+    seenHash.add(a.hash);
+    out.push({ mid: String(m.mid || m.gid), i: a.i, name: a.name, size, type: t, hash: a.hash, big: size > MAX_COPY });
+  }
+  return out.slice(0, 15);
+}
+function guessType(name: string, type: string, fromSupplier: boolean) {
+  const n = name.toLowerCase();
+  if (/layout|elevation|floor ?plan|drawing|2020|design/.test(n)) return "Layout";
+  if (/render/.test(n)) return "Rendering";
+  if (/agreement|contract|terms|signed/.test(n)) return "Agreement";
+  if (/quote|qt\d|estimate|proposal|invoice|bid/.test(n)) return fromSupplier ? "Supplier quote" : "Quote";
+  if (type.startsWith("image/")) return "Photo";
+  return fromSupplier && type === "application/pdf" ? "Supplier quote" : "Other";
+}
+const FILE_READER = `You read one file attached to an email for Twin Cities Remodeling Supply (cabinets, countertops, flooring, appliances; Minnesota).
+Return ONLY JSON {"ftype":"Photo|Layout|Rendering|Supplier quote|Contractor quote|Estimate|Quote|Agreement|Scan|Other","summary":"1-2 plain lines: what it is + the key facts (totals with $, product/finish/color names, quote numbers, dates)","sizes":[{"what":"e.g. Sink wall","value":120,"unit":"in|ft|lf|sf|ea"}]}
+Never invent numbers. sizes only for room/wall/cabinet-run dimensions clearly written on the file (max 8), else [].`;
+async function storeAttachment(up: any, c: any, box: string, supDomains: Set<string>) {
+  const key = serverKey();
+  const bytes = decodeBase64(String(up.b64 || ""));
+  if (!bytes.length || bytes.length > MAX_COPY) return { skipped: "size" };
+  const exists = await db(`files?select=id&customer_id=eq.${c.id}&hash=eq.${encodeURIComponent(up.hash)}`);
+  if (exists.length) return { skipped: "duplicate" };
+  const safe = String(up.name || "file").replace(/[^\w.\-]+/g, "_").slice(-120);
+  const path = `${c.id}/${Date.now()}-${safe}`;
+  const type = String(up.type || "application/octet-stream");
+  const r = await fetch(`${URL_}/storage/v1/object/files/${path}`, { method: "POST", headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": type, "x-upsert": "false" }, body: bytes as unknown as BodyInit });
+  if (!r.ok) throw new Error("storage: " + r.status + " " + (await r.text()).slice(0, 200));
+  const fromSupplier = emailsIn(up.from).some((e: string) => supDomains.has(e.split("@")[1]));
+  let ftype = guessType(safe, type, fromSupplier);
+  let summary: string | null = null; let sizes: any[] = [];
+  if (READABLE.includes(type) && bytes.length <= MAX_READ) {
+    try {
+      const blk = type === "application/pdf" ? { type: "document", source: { type: "base64", media_type: type, data: up.b64 } } : { type: "image", source: { type: "base64", media_type: type, data: up.b64 } };
+      const j = await claude(MODEL_TRIAGE, FILE_READER, [blk, { type: "text", text: `File "${up.name}" for ${c.name || "a customer"}, from ${up.from || "?"}, email "${up.subject || ""}".` }], 600);
+      if (j?.ftype) ftype = j.ftype; summary = j?.summary ? String(j.summary).slice(0, 600) : null; sizes = Array.isArray(j?.sizes) ? j.sizes.slice(0, 8) : [];
+    } catch { /* keep the file even if reading fails */ }
+  }
+  const prev = await db(`files?select=version&customer_id=eq.${c.id}&ftype=eq.${encodeURIComponent(ftype)}&order=version.desc&limit=1`);
+  await post("files", { customer_id: c.id, path, name: String(up.name || safe).slice(0, 200), ftype, version: (prev[0]?.version || 0) + 1, size: bytes.length, mime: type, hash: up.hash, summary, src: box + "@ email", by: null });
+  for (const z of sizes) if (z?.what && Number(z.value) > 0) await post("sizes", { customer_id: c.id, what: String(z.what).slice(0, 120), value: Number(z.value), unit: ["in", "ft", "lf", "sf", "ea"].includes(z.unit) ? z.unit : "in", source: "email file" }).catch(() => null);
+  await post("logs", { customer_id: c.id, kind: "system", at: up.date || new Date().toISOString(), src: box + "@", summary: `📎 ${ftype}: ${String(up.name || safe).slice(0, 80)}${summary ? " — " + summary.slice(0, 160) : ""}` }).catch(() => null);
+  return { stored: true, ftype };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
   let body: any;
@@ -110,20 +168,38 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   }
 
+  // One attachment the script copied for us
+  if (body.upload) {
+    try {
+      const [cs, partners] = await Promise.all([db(`customers?select=id,name&id=eq.${encodeURIComponent(String(body.upload.cid || ""))}`), db("partners?select=email")]);
+      if (!cs.length) return json({ error: "customer not found" }, 404);
+      const sd = new Set([...SUPPLIER_DOMAINS, ...partners.map((p: any) => String(p.email || "").toLowerCase().split("@")[1]).filter(Boolean)]);
+      return json(await storeAttachment(body.upload, cs[0], box, sd));
+    } catch (e) { return json({ error: String(e).slice(0, 300) }, 500); }
+  }
+
   const th = body.thread;
   if (!th?.messages?.length) return json({ error: "No thread" }, 400);
   try {
     const mids = th.messages.map((m: any) => String(m.mid || m.gid)).filter(Boolean);
     const seen = new Set((await db(`logs?select=ext_id&ext_id=in.(${mids.map((x: string) => `"${x.replace(/"/g, "")}"`).join(",")})`)).map((l: any) => l.ext_id));
     const fresh = th.messages.filter((m: any) => !seen.has(String(m.mid || m.gid)));
-    if (!fresh.length) return json({ action: "seen" });
+    const hashesFor = async (cid: string) => new Set<string>((await db(`files?select=hash&customer_id=eq.${cid}&hash=not.is.null`)).map((f: any) => f.hash));
+    if (!fresh.length) {
+      const hasFiles = th.messages.some((m: any) => (m.files || []).length);
+      if (!hasFiles) return json({ action: "seen" });
+      const owner = (await db(`logs?select=customer_id&ext_id=in.(${mids.map((x: string) => `"${x.replace(/"/g, "")}"`).join(",")})&limit=1`))[0]?.customer_id;
+      if (!owner) return json({ action: "seen" });
+      return json({ action: "seen", cid: owner, want: wantedAttachments(th.messages, await hashesFor(owner)) });
+    }
 
     const [customers, partners, setRows] = await Promise.all([
       db("customers?select=id,name,email,phone,address,city,stage,products,services,lost,tldr,first_contact,measure_date,delivery_date,install_date,source,ctype,budget,timeline,zip,data"),
       db("partners?select=name,ptype,email"),
-      db("settings?select=id,data&id=eq.main"),
+      db("settings?select=id,data&id=in.(main,sweep)"),
     ]);
-    const st = setRows[0]?.data || {};
+    const st = setRows.find((r: any) => r.id === "main")?.data || {};
+    const blocked = setRows.find((r: any) => r.id === "sweep")?.data?.blocked || [];
 
     // Pre-match on email / phone so Claude sees the right file.
     const supDomains = new Set([...SUPPLIER_DOMAINS, ...partners.map((p: any) => String(p.email || "").toLowerCase().split("@")[1]).filter(Boolean)]);
@@ -135,8 +211,10 @@ Deno.serve(async (req) => {
     if (!pre.length) pre = customers.filter((c: any) => digits(c.phone).length === 10 && digits(text).length && text.replace(/\D/g, "").includes(digits(c.phone)));
     const preC = pre.length === 1 ? pre[0] : null;
     const partnerMail = all.some((e: string) => isSupplier(e));
+    // Leads deleted in HQ with "don't re-create" stay deleted.
+    if (!preC && blocked.some((b: any) => (b.email && people.has(String(b.email).toLowerCase())) || (digits(b.phone).length === 10 && text.replace(/\D/g, "").includes(digits(b.phone))))) return json({ action: "ignored", why: "lead was deleted in HQ" });
 
-    const thread = th.messages.map((m: any) => `--- ${seen.has(String(m.mid || m.gid)) ? "context" : "NEW"} | id: ${m.mid || m.gid} | ${m.date}\nFrom: ${m.from}\nTo: ${m.to}${m.cc ? "\nCc: " + m.cc : ""}${(m.attachments || []).length ? "\nAttachments: " + m.attachments.join(", ") : ""}\n\n${strip(String(m.body || ""))}`).join("\n\n");
+    const thread = th.messages.map((m: any) => `--- ${seen.has(String(m.mid || m.gid)) ? "context" : "NEW"} | id: ${m.mid || m.gid} | ${m.date}\nFrom: ${m.from}\nTo: ${m.to}${m.cc ? "\nCc: " + m.cc : ""}${(m.files || m.attachments || []).length ? "\nAttachments: " + (m.files || []).map((a: any) => a.name).concat(m.attachments || []).join(", ") : ""}\n\n${strip(String(m.body || ""))}`).join("\n\n");
 
     // Cheap triage when nothing matched (keeps the monthly Claude bill small).
     if (!preC && !partnerMail) {
@@ -226,7 +304,8 @@ Deno.serve(async (req) => {
       await patch("customers", c.id, { data: { ...((await db(`customers?select=data&id=eq.${c.id}`))[0].data || {}), autoReplied: { at: now, mode } } });
       await post("logs", { customer_id: c.id, kind: "system", at: now, summary: mode === "send" ? "First reply sent automatically (intake questions)" : "First reply saved as a Gmail draft (intake questions) — review and send" });
     }
-    return json({ action: created ? "created" : "updated", customer: c.name, cid: c.id, reply });
+    const want = th.messages.some((m: any) => (m.files || []).length) ? wantedAttachments(th.messages, await hashesFor(c.id)) : [];
+    return json({ action: created ? "created" : "updated", customer: c.name, cid: c.id, reply, want });
   } catch (e) {
     return json({ error: String(e).slice(0, 400) }, 500);
   }

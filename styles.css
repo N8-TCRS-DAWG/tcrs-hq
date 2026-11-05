@@ -520,3 +520,4 @@ body.tv .chat-fab, body.tv .chat-box { display: none; }
 .sheet-f #saveState.dirty { color: var(--amber); font-weight: 600; }
 .btn.danger-t { color: var(--red); }
 body:has(.sheet-bg) #chatFab { bottom: 84px; }   /* keep the chat bubble off the Save & close bar */
+.file .fsum { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--ink); }

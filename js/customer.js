@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261104182247';
+import * as D from './data.js?v=20261104182925';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName, pendingSaves,
-} from './core.js?v=20261104182247';
-import { openDrop } from './drop.js?v=20261104182247';
-import { renderLayout } from './layout.js?v=20261104182247';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261104182247';
+} from './core.js?v=20261104182925';
+import { openDrop } from './drop.js?v=20261104182925';
+import { renderLayout } from './layout.js?v=20261104182925';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261104182925';
 
 let curId = null;
 let tab = 'overview';
@@ -389,7 +389,8 @@ function filesTab(el, c) {
       <a class="thumb" href="#" data-open="${f.id}" aria-label="Open ${esc(f.name)}">${(f.mime || '').startsWith('image/') ? `<img data-path="${esc(f.path)}" alt="">` : `<span class="lbl">${esc((f.name.split('.').pop() || 'file').toUpperCase())}</span>`}</a>
       <div class="cap"><b title="${esc(f.name)}">${esc(f.name)}</b>
         <span class="small">${esc(f.ftype)} v${f.version} ${latest[f.ftype]?.id === f.id ? '<span class="badge-latest">★ latest</span>' : ''}</span>
-        <span class="small muted">${fmtDate(f.created_at)}</span>
+        <span class="small muted">${fmtDate(f.created_at)}${f.src ? ` · ${esc(f.src.includes('email') ? 'from email' : f.src)}` : ''}</span>
+        ${f.summary ? `<span class="small fsum" title="${esc(f.summary)}">${esc(f.summary)}</span>` : ''}
         ${canWrite() ? `<select class="ftype" aria-label="File type">${FTYPES.map((t) => `<option ${t === f.ftype ? 'selected' : ''}>${t}</option>`).join('')}</select>` : ''}
       </div></div>`).join('')}</div>` : '<div class="empty">No files yet. Drop photos, layouts, scans or supplier quotes.</div>'}
   </section>
@@ -504,4 +505,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261104182247';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261104182925';
