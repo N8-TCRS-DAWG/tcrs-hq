@@ -1,14 +1,14 @@
 // Boot, login, top bar, routing, live refresh.
-import * as D from './data.js?v=20261109120943';
-import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261109120943';
-import { wireChat } from './chat.js?v=20261109120943';
-import { renderCRM } from './crm.js?v=20261109120943';
-import { renderBoard, renderRace, renderTV } from './board.js?v=20261109120943';
-import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261109120943';
-import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261109120943';
-import { renderHelp, renderBrain } from './help.js?v=20261109120943';
+import * as D from './data.js?v=20261109122301';
+import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261109122301';
+import { wireChat } from './chat.js?v=20261109122301';
+import { renderCRM } from './crm.js?v=20261109122301';
+import { renderBoard, renderRace, renderTV } from './board.js?v=20261109122301';
+import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261109122301';
+import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261109122301';
+import { renderHelp, renderBrain } from './help.js?v=20261109122301';
 
-import { BUILD } from './version.js?v=20261109120943';
+import { BUILD } from './version.js?v=20261109122301';
 const app = $('#app');
 
 /* Updates: if a newer HQ is published, reload (TV) or offer a one-click reload. */

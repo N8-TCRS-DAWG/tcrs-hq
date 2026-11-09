@@ -1,9 +1,9 @@
 // The Drop: everything enters HQ here. Read → Check → Save.
-import * as D from './data.js?v=20261109120943';
-import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, money0, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js?v=20261109120943';
-import { bumpRevision } from './customer.js?v=20261109120943';
-import { planFromSpec } from './layout.js?v=20261109120943';
-import { addLinesToQuote } from './quote.js?v=20261109120943';
+import * as D from './data.js?v=20261109122301';
+import { S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, toast, money0, todayISO, addDays, stageIdx, learnedContext, logEvent, patchCustomer, settings, custFiles, custLayouts } from './core.js?v=20261109122301';
+import { bumpRevision } from './customer.js?v=20261109122301';
+import { planFromSpec } from './layout.js?v=20261109122301';
+import { addLinesToQuote } from './quote.js?v=20261109122301';
 
 let box = null;
 let st = null; // { customerId, files:[{file, type, thumb}], text, instr }

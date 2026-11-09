@@ -1,10 +1,10 @@
 // Estimate → Quote: one growing document. COST = TCRS pays. PRICE = customer pays.
-import * as D from './data.js?v=20261109120943';
+import * as D from './data.js?v=20261109122301';
 import {
   S, PRODUCTS, esc, $, $$, n, r2, money, money0, settings, lineCalc, optionCalc, quoteCalc, custQuote, custSizes, custLayouts,
-  todayISO, addDays, fmtDateLong, toast, canWrite, logEvent, patchCustomer, learnedContext, stageIdx, custFiles,
-} from './core.js?v=20261109120943';
-import { modal, moveStage } from './customer.js?v=20261109120943';
+  todayISO, addDays, fmtDateLong, toast, canWrite, logEvent, patchCustomer, learnedContext, stageIdx, custFiles, estRange,
+} from './core.js?v=20261109122301';
+import { modal, moveStage } from './customer.js?v=20261109122301';
 
 const KINDS = [['material', 'Material'], ['delivery', 'Delivery'], ['install', 'Installation'], ['fee', 'Fee'], ['discount', 'Discount']];
 const SEC_NOTE = {
@@ -57,7 +57,7 @@ export function renderQuote(el, c) {
     el.innerHTML = `<div class="empty"><h3>No estimate yet</h3><p>Start one here. It grows into the final quote: ranges and options first, line items once the design deposit is paid and sizes are verified.</p>
       ${canWrite() ? '<div class="row" style="justify-content:center"><button class="btn primary" type="button" id="qQuick">⚡ Quick estimate from a few sizes</button><button class="btn" type="button" id="qStart">Start a detailed estimate</button></div>' : ''}</div>`;
     $('#qStart', el)?.addEventListener('click', async () => { await ensureQuote(c); renderQuote(el, c); });
-    $('#qQuick', el)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261109120943'); openQuick(c); });
+    $('#qQuick', el)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261109122301'); openQuick(c); });
     return;
   }
   const qq = live && live.q.id === q.id && dirty ? live.q : structuredClone(q);
@@ -385,10 +385,10 @@ export function missingCost(q) {
   })));
   return out;
 }
-function rangeOf(v, pct) {
+function rangeOf(v, pct, cost = 0, floorMk = settings().rangeFloorMarkup, extra = 0) {
   if (!pct) return money0(Math.round(v));
-  const lo = Math.floor(v * (1 - pct / 100) / 100) * 100, hi = Math.ceil(v * (1 + pct / 100) / 100) * 100;
-  return `${money0(lo)} – ${money0(hi)}`;
+  const r = estRange(v, cost, pct, floorMk, extra);
+  return `${money0(r.lo)} – ${money0(r.hi)}`;
 }
 export function docHTML(q, c) {
   const st = quoteSt(q);
@@ -396,6 +396,7 @@ export function docHTML(q, c) {
   const t = quoteCalc(q, c, st);
   const isQ = q.mode === 'quote';
   const pct = isQ ? 0 : (n(q.settings?.range) ?? settings().estimateRangePct);
+  const fmk = n(q.settings?.floorMk) ?? settings().rangeFloorMarkup;
   const date = (q.sent_at || new Date().toISOString()).slice(0, 10);
   const valid = addDays(date, n(q.settings?.validDays) ?? settings().quoteValidDays);
   const showRefName = !!q.settings?.showReferralName;
@@ -406,7 +407,7 @@ export function docHTML(q, c) {
         <div style="font:700 15px Cabin,Arial,sans-serif;color:#163126">${esc(s.product)}</div>
         <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:8px">${s.options.map((o) => { const x = optionCalc(o, st); const refs = o.lines.filter((l) => l.deal === 'referral'); return `<div style="flex:1;min-width:180px;background:${o.id === s.chosen ? '#EEF5EF' : '#F7F3EC'};border-radius:6px;padding:8px 10px">
           <div style="font-weight:700">${esc(o.name)}</div>
-          <div style="font:700 18px Cabin,Arial,sans-serif;margin-top:2px">${x.price > 0 ? rangeOf(x.price, pct) : 'Price to come'}</div>
+          <div style="font:700 18px Cabin,Arial,sans-serif;margin-top:2px">${x.price > 0 ? rangeOf(x.price, pct, x.cost, fmk) : 'Price to come'}</div>
           <div style="font-size:11px;color:#5D6A61">${[x.mat ? 'materials' : '', x.del ? 'delivery' : '', x.ins ? 'installation' : ''].filter(Boolean).join(' · ') || ''}${refs.length ? ' · plus partner work billed directly' : ''}</div></div>`; }).join('')}</div>
         ${s.note ? `<div style="font-size:11.5px;color:#5D6A61;margin-top:6px">${esc(s.note)}</div>` : ''}</div>`;
     }
@@ -439,7 +440,7 @@ export function docHTML(q, c) {
     <div class="pdf-keep" style="background:#163126;color:#EEE5D8;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;margin-top:6px">
       <div style="font:700 14px Cabin,Arial,sans-serif;letter-spacing:.06em">PROJECT TOTAL</div>
       <div style="text-align:right">${t.tax ? `<div style="font-size:11px">Sales tax ${t.taxRate}% on materials: ${money(t.tax)}</div>` : ''}${t.depositCredit ? `<div style="font-size:11px">Design deposit credit: −${money(t.depositCredit)}</div>` : ''}${t.revFeeCredit ? `<div style="font-size:11px">Revision fees credit: −${money(t.revFeeCredit)}</div>` : ''}
-      <div style="font:700 22px Cabin,Arial,sans-serif">${isQ ? money(t.total) : rangeOf(t.total, pct)}</div>${!isQ && missingCost(q).length ? '<div style="font-size:11px">Some items still to be priced</div>' : ''}</div></div>
+      <div style="font:700 22px Cabin,Arial,sans-serif">${isQ ? money(t.total) : rangeOf(t.total, pct, t.cost, fmk, t.tax - t.depositCredit - t.revFeeCredit)}</div>${!isQ && missingCost(q).length ? '<div style="font-size:11px">Some items still to be priced</div>' : ''}</div></div>
     <div class="pdf-keep" style="font-size:11px;color:#5D6A61;margin-top:14px;line-height:1.5">${esc(terms)}</div>
     <div class="pdf-keep" style="font-size:11px;color:#5D6A61;margin-top:8px">Questions? Call ${esc(co.phone)} or email ${esc(co.email)}.</div>
   </div>`;

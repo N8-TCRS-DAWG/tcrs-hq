@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261109120943';
+import * as D from './data.js?v=20261109122301';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName, pendingSaves,
-} from './core.js?v=20261109120943';
-import { openDrop } from './drop.js?v=20261109120943';
-import { renderLayout } from './layout.js?v=20261109120943';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261109120943';
+} from './core.js?v=20261109122301';
+import { openDrop } from './drop.js?v=20261109122301';
+import { renderLayout } from './layout.js?v=20261109122301';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261109122301';
 
 let curId = null;
 let tab = 'overview';
@@ -135,7 +135,7 @@ function draw() {
   $('#cNext', sheet).onclick = () => go(1);
   sheet.onkeydown = (e) => { const a = document.activeElement; if (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return; if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); };
   $('#cDrop', sheet)?.addEventListener('click', () => openDrop({ customerId: c.id }));
-  $('#cQuick', sheet)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261109120943'); openQuick(c); });
+  $('#cQuick', sheet)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261109122301'); openQuick(c); });
   $$('.step', sheet).forEach((b) => (b.onclick = () => { if (b.dataset.stage !== c.stage) moveStage(c, b.dataset.stage); }));
   $$('[data-tab]', sheet).forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
   wireNext(c);
@@ -508,4 +508,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261109120943';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261109122301';

@@ -1,13 +1,14 @@
 // Quick estimate: a rough COST + PRICE range from a few key dimensions, meant to go back to a new lead
 // within 5–20 minutes. Fills the lead's Estimate (same PDF / "mark sent" flow as the Estimate → Quote tab).
 // COST = what TCRS pays. PRICE = what the customer pays. Rates live in settings.main.quickRates (editable here).
-import * as D from './data.js?v=20261109120943';
-import { S, esc, $, $$, n, r2, money0, settings, toast, canWrite, logEvent, patchCustomer, custQuote } from './core.js?v=20261109120943';
-import { modal } from './customer.js?v=20261109120943';
-import { ensureQuote, openDoc } from './quote.js?v=20261109120943';
+import * as D from './data.js?v=20261109122301';
+import { S, esc, $, $$, n, r2, money0, settings, toast, canWrite, logEvent, patchCustomer, custQuote, estRange } from './core.js?v=20261109122301';
+import { modal } from './customer.js?v=20261109122301';
+import { ensureQuote, openDoc } from './quote.js?v=20261109122301';
 
 /* Defaults. "src" says where each number came from so nobody mistakes a placeholder for a real price. */
 export const QR_DEFAULT = {
+  range: 15, floorMk: 15,   // range sent = ±15% around price; low end never below cost + 15% markup
   cab: {
     lines: {
       'J&K': { box: 205, src: 'Average J&K cost per box from 3 recent J&K quotes (Jon Thenhaus $256, Areli $206, Stacy Wang $147; 25–50% discounts)' },
@@ -15,18 +16,18 @@ export const QR_DEFAULT = {
     },
     boxW: 27, wallVsBase: 0.8, tallBoxes: 3, trimPct: 12, assembly: 20,
     ceiling: { 8: 1, 9: 1.2, 10: 1.45 },
-    deliveryCost: 250, deliveryPrice: 300, installPrice: 175, installCost: null, range: 25,
-    src: 'Box width 27" (cabinet tool default); wall box = 80% of a base box (assumption); trim/fillers +12% (assumption); assembly $20/box, delivery $250 (J&K rate sheet ≤45 mi); install $175/box customer price (cabinet tool); ceiling 9 ft ×1.2, 10 ft ×1.45 for taller uppers (assumption)',
+    deliveryCost: 250, deliveryPrice: 300, installPrice: 175, installCost: 125,
+    src: 'Box width 27" (cabinet tool default); wall box = 80% of a base box (assumption); trim/fillers +12% (assumption); assembly $20/box, delivery $250 (J&K rate sheet ≤45 mi); install $175/box customer price (cabinet tool), install cost target $125/box (Zuggy, varies by job); ceiling 9 ft ×1.2, 10 ft ×1.45 for taller uppers (assumption)',
   },
   floor: {
     types: {
       Laminate: { mat: 3.5, ins: 2.5 }, LVP: { mat: 4.0, ins: 3.5 }, Cork: { mat: 5.5, ins: 3.5 }, Hardwood: { mat: 6.0, ins: 4.5 },
     },
-    waste: 10, laborDiscPct: 15, range: 15, placeholder: true,
+    waste: 10, laborDiscPct: 15, placeholder: true,
     src: 'PLACEHOLDERS from public retail ranges (BuildDirect 2026: laminate $2.47–4.59, LVP $2.45–5.79, engineered hardwood $3.45–8.49/sf; labor $2–6/sf). Cork has no source. Replace with your supplier costs.',
   },
   ctop: {
-    levels: [60, 75, 90, 120], depth: 25.5, splash: 4, installCost: 7.83, sinkCost: 250, range: 15,
+    levels: [60, 75, 90, 120], depth: 25.5, splash: 4, installCost: 7.83, sinkCost: 250,
     src: 'Stone levels 1–4 = $60/$75/$90/$120 per sf cost (Khan job supplier); install $7.83/sf ($940 ÷ 120 sf, Khan); sink cutout $250 (Aztek)',
   },
 };
@@ -133,17 +134,15 @@ export function openQuick(c) {
     const render = () => {
       const R = rates();
       const res = { cab: x.on.cab ? calcCab(x.cab, R) : null, floor: x.on.floor ? calcFloor(x.floor, R) : null, top: x.on.top ? calcTop(x.top, R) : null };
-      const rng = { cab: R.cab.range, floor: R.floor.range, top: R.ctop.range };
-      let cost = 0, price = 0, lo = 0, hi = 0;
+      let cost = 0, price = 0;
       const rows = PRODS.filter(([, k]) => res[k]).map(([label, k]) => {
         const cst = res[k].lines.reduce((a, l) => a + l.qty * (l.cost || 0), 0);
         const prc = res[k].lines.reduce((a, l) => a + priceOf(l, x.markup), 0);
-        cost += cst; price += prc; lo += prc * (1 - rng[k] / 100); hi += prc * (1 + rng[k] / 100);
-        return { label, k, cst, prc };
+        cost += cst; price += prc;
+        return { label, k, cst, prc, r: estRange(prc, cst, R.range, R.floorMk) };
       });
-      // One blended ± range so the email, the PDF and the pipeline all show the same numbers.
-      const pct = price ? Math.round((((hi - lo) / 2) / price) * 100) : 0;
-      lo = price * (1 - pct / 100); hi = price * (1 + pct / 100);
+      const pct = R.range;
+      const { lo, hi } = estRange(price, cost, R.range, R.floorMk);
       const wall = (arr, key, ph) => arr.map((w, i) => `<span class="qk-w"><span class="qk-l">${String.fromCharCode(65 + i)}</span><input type="text" data-arr="${key}" data-i="${i}" value="${esc(w)}" placeholder="${ph}" inputmode="decimal">${arr.length > 1 ? `<button type="button" class="x sm" data-del="${key}" data-i="${i}" aria-label="Remove">×</button>` : ''}</span>`).join('');
       body.innerHTML = `
       <div class="qk-prods">${PRODS.map(([l, k]) => `<label class="chip pick ${x.on[k] ? 'on' : ''}"><input type="checkbox" data-on="${k}" ${x.on[k] ? 'checked' : ''}> ${l}</label>`).join('')}
@@ -182,9 +181,10 @@ export function openQuick(c) {
       <div class="qk-total">
         <label class="qk-mk">Markup <input type="range" min="0" max="80" step="1" id="qkMk" value="${x.markup}"><b id="qkMkV">${x.markup}%</b></label>
         <table class="simple qk-tab"><thead><tr><th></th><th class="n">Our cost</th><th class="n">Customer price</th><th class="n">Range sent</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td>${r.label} <span class="small muted" title="How rough this product's numbers are; the blended range is used for the email and PDF">±${rng[r.k]}% uncertainty</span></td><td class="n">${money0(r.cst)}</td><td class="n">${money0(r.prc)}</td><td class="n">${r.prc ? `${money0(floor100(r.prc * (1 - pct / 100)))} – ${money0(ceil100(r.prc * (1 + pct / 100)))}` : '—'}</td></tr>`).join('')}
-          <tr class="qk-sum"><td><b>Total</b> <span class="small muted">±${pct}%</span></td><td class="n"><b>${money0(cost)}</b></td><td class="n"><b>${money0(price)}</b></td><td class="n"><b>${price ? `${money0(floor100(lo))} – ${money0(ceil100(hi))}` : '—'}</b></td></tr>
+          ${rows.map((r) => `<tr><td>${r.label}</td><td class="n">${money0(r.cst)}</td><td class="n">${money0(r.prc)}</td><td class="n">${r.prc ? `${money0(r.r.lo)} – ${money0(r.r.hi)}` : '—'}</td></tr>`).join('')}
+          <tr class="qk-sum"><td><b>Total</b></td><td class="n"><b>${money0(cost)}</b></td><td class="n"><b>${money0(price)}</b></td><td class="n"><b>${price ? `${money0(lo)} – ${money0(hi)}` : '—'}</b></td></tr>
         </tbody></table>
+        <div class="small muted">Range sent = ±${R.range}% around the price; the low end never drops below our cost + ${R.floorMk}% markup${price && estRange(price, cost, R.range, R.floorMk).floored ? ' (floor applied here)' : ''}.</div>
         <div class="small muted">Gross profit ≈ <b>${money0(price - cost)}</b>${price ? ` (${Math.round(((price - cost) / price) * 100)}% margin)` : ''}. Rough numbers for a fast first reply, not a quote.</div>
         ${Object.values(res).filter(Boolean).flatMap((r) => r.warn).map((w) => `<div class="small qk-warn">⚠ ${esc(w)}</div>`).join('')}
       </div>
@@ -236,7 +236,7 @@ function replyText(c, x, tot) {
   const incl = [x.on.cab && x.cab.delivery && 'delivery', ((x.on.cab && x.cab.install) || (x.on.floor && x.floor.install) || (x.on.top && x.top.install)) && 'installation'].filter(Boolean);
   return `Hi ${first},
 
-Thanks again for reaching out! Based on the sizes you sent (${summaryText(x, tot)}), a rough ballpark is ${money0(floor100(tot.lo))} – ${money0(ceil100(tot.hi))}${incl.length ? `, including ${incl.join(' and ')}` : ''}.
+Thanks again for reaching out! Based on the sizes you sent (${summaryText(x, tot)}), a rough ballpark is ${money0(tot.lo)} – ${money0(tot.hi)}${incl.length ? `, including ${incl.join(' and ')}` : ''}.
 
 This is a quick estimate, not a quote. The final price depends on exact measurements, door style and finish, and the materials you pick. If that range works for you, the next step is a few photos (or a quick measure) so we can put together a detailed layout and quote.
 
@@ -264,11 +264,11 @@ async function writeEstimate(c, x, tot, R) {
   if (tot.res.cab?.lines.length) add('Cabinets', tot.res.cab.lines, 'Rough estimate from wall widths. Hinges and drawer slides included; knobs and pulls not included.');
   if (tot.res.floor?.lines.length) add('Flooring', tot.res.floor.lines, 'Rough estimate from room sizes.');
   if (tot.res.top?.lines.length) add('Countertops', tot.res.top.lines, 'Rough estimate from counter runs; final price after slab selection and field measure.');
-  const qs = { ...(q.settings || {}), markup: x.markup, range: tot.pct };
+  const qs = { ...(q.settings || {}), markup: x.markup, range: R.range, floorMk: R.floorMk };
   await D.update('quotes', q.id, { sections: secs, mode: 'estimate', settings: qs });
   Object.assign(q, { sections: secs, mode: 'estimate', settings: qs });
   await patchCustomer(c, { est_price: Math.round(tot.price), data: { ...(c.data || {}), quickEst: x } });
-  await logEvent(c.id, 'system', `⚡ Quick estimate: ${summaryText(x, tot)} → ${money0(floor100(tot.lo))} – ${money0(ceil100(tot.hi))} (cost ${money0(tot.cost)}, markup ${x.markup}%)`);
+  await logEvent(c.id, 'system', `⚡ Quick estimate: ${summaryText(x, tot)} → ${money0(tot.lo)} – ${money0(tot.hi)} (cost ${money0(tot.cost)}, markup ${x.markup}%)`);
   return custQuote(c.id) || q;
 }
 
@@ -278,20 +278,21 @@ function openRates(after) {
   const num = (path, v, unit, w = 70) => `<input type="text" inputmode="decimal" data-r="${path}" value="${v ?? ''}" style="width:${w}px"> ${unit}`;
   modal('<h2>Quick estimate rates (our COST)</h2>', `
     <p class="small muted">Changes apply to every new quick estimate. Where each default came from is listed under each block.</p>
+    <h3>Range sent to the customer</h3>
+    <div class="qk-row">± ${num('range', R.range, '% around the price', 40)} · low end never below cost + ${num('floorMk', R.floorMk, '% markup', 40)}</div>
     <h3>Cabinets</h3>
     ${Object.entries(R.cab.lines).map(([k, v]) => `<div class="qk-row"><b style="min-width:90px">${esc(k)}</b> ${num(`cab.lines.${k}.box`, v.box, 'per box (avg)')}</div>`).join('')}
     <div class="qk-row">Avg box width ${num('cab.boxW', R.cab.boxW, 'in', 50)} · Wall box ${num('cab.wallVsBase', R.cab.wallVsBase, '× base', 50)} · Tall pantry ${num('cab.tallBoxes', R.cab.tallBoxes, '× box', 50)} · Trim/fillers +${num('cab.trimPct', R.cab.trimPct, '%', 40)}</div>
     <div class="qk-row">Ceiling 9 ft ${num('cab.ceiling.9', R.cab.ceiling[9], '×', 50)} · 10 ft ${num('cab.ceiling.10', R.cab.ceiling[10], '×', 50)}</div>
     <div class="qk-row">Assembly ${num('cab.assembly', R.cab.assembly, '/box', 50)} · Delivery cost ${num('cab.deliveryCost', R.cab.deliveryCost, '', 60)} price ${num('cab.deliveryPrice', R.cab.deliveryPrice, '', 60)} · Install price ${num('cab.installPrice', R.cab.installPrice, '/box', 60)} cost ${num('cab.installCost', R.cab.installCost, '/box', 60)}</div>
-    <div class="qk-row">Range sent ± ${num('cab.range', R.cab.range, '%', 40)}</div>
     <p class="small muted">${esc(R.cab.src)}. ${esc(R.cab.lines['J&K'].src)}.</p>
     <h3>Flooring ${R.floor.placeholder ? '<span class="chip warn">placeholders</span>' : ''}</h3>
     ${Object.entries(R.floor.types).map(([k, v]) => `<div class="qk-row"><b style="min-width:90px">${esc(k)}</b> material ${num(`floor.types.${k}.mat`, v.mat, '/sf', 60)} install ${num(`floor.types.${k}.ins`, v.ins, '/sf', 60)}</div>`).join('')}
-    <div class="qk-row">Waste ${num('floor.waste', R.floor.waste, '%', 40)} · Labor discount ${num('floor.laborDiscPct', R.floor.laborDiscPct, '%', 40)} · Range ± ${num('floor.range', R.floor.range, '%', 40)}</div>
+    <div class="qk-row">Waste ${num('floor.waste', R.floor.waste, '%', 40)} · Labor discount ${num('floor.laborDiscPct', R.floor.laborDiscPct, '%', 40)}</div>
     <p class="small muted">${esc(R.floor.src)}</p>
     <h3>Countertops</h3>
     <div class="qk-row">${R.ctop.levels.map((v, i) => `L${i + 1} ${num(`ctop.levels.${i}`, v, '/sf', 55)}`).join(' · ')}</div>
-    <div class="qk-row">Depth ${num('ctop.depth', R.ctop.depth, 'in', 50)} · Fab+install ${num('ctop.installCost', R.ctop.installCost, '/sf', 55)} · Sink cutout ${num('ctop.sinkCost', R.ctop.sinkCost, 'ea', 55)} · Range ± ${num('ctop.range', R.ctop.range, '%', 40)}</div>
+    <div class="qk-row">Depth ${num('ctop.depth', R.ctop.depth, 'in', 50)} · Fab+install ${num('ctop.installCost', R.ctop.installCost, '/sf', 55)} · Sink cutout ${num('ctop.sinkCost', R.ctop.sinkCost, 'ea', 55)}</div>
     <p class="small muted">${esc(R.ctop.src)}</p>
     <div class="row"><button class="btn primary" type="button" id="rkSave">Save rates</button><button class="btn ghost" type="button" id="rkReset">Reset to defaults</button></div>`,
   (box, close) => {

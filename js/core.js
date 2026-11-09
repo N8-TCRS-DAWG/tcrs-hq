@@ -1,5 +1,5 @@
 // Shared state, helpers and business rules.
-import * as D from './data.js?v=20261109120943';
+import * as D from './data.js?v=20261109122301';
 
 export const S = {
   customers: [], actions: [], logs: [], files: [], sizes: [], layouts: [], quotes: [],
@@ -35,7 +35,7 @@ export const WHOSE = [
 export const DEFAULT_SETTINGS = {
   markupDefault: 25, markupOneOff: 55, markupFloor: 25, referralPct: 15,
   depositAmount: 250, revisionsIncluded: 2, revisionBonusIfIntakeComplete: 1, revisionFee: 200,
-  taxRate: null, staleDays: 3, quoteValidDays: 30, estimateRangePct: 10,
+  taxRate: null, staleDays: 3, quoteValidDays: 30, estimateRangePct: 15, rangeFloorMarkup: 15,
   scoreWeights: { conversion: 25, budget: 25, repeat: 25, intake: 25 },
   company: {
     name: 'Twin Cities Remodeling Supply',
@@ -228,6 +228,14 @@ export function lineCalc(l, st = settings()) {
   const price = r2(qty * (unitPrice || 0));
   const effMk = unitCost ? ((unitPrice - unitCost) / unitCost) * 100 : null;
   return { qty, unitCost, unitPrice, cost, price, profit: r2(price - cost), markup: effMk, low: effMk != null && effMk < st.markupFloor - 0.01 };
+}
+/* Estimate range: ±pct around the customer price, but the low end never drops below cost + floor markup. */
+export function estRange(price, cost, pct = settings().estimateRangePct, floorMk = settings().rangeFloorMarkup, extra = 0) {
+  const hi = Math.ceil(price * (1 + pct / 100) / 100) * 100;
+  let lo = Math.floor(price * (1 - pct / 100) / 100) * 100;
+  const floor = cost > 0 && floorMk != null ? cost * (1 + floorMk / 100) + extra : 0;
+  if (lo < floor) lo = Math.ceil(floor / 100) * 100;   // round UP so the floor is never undercut
+  return { lo: Math.min(lo, hi), hi, floored: lo === Math.ceil(floor / 100) * 100 && floor > 0 };
 }
 export const BUCKET = { material: 'mat', fee: 'mat', discount: 'mat', delivery: 'del', install: 'ins' };
 export function optionCalc(opt, st = settings()) {
