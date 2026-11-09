@@ -1,5 +1,5 @@
 // Shared state, helpers and business rules.
-import * as D from './data.js?v=20261104184942';
+import * as D from './data.js?v=20261109120943';
 
 export const S = {
   customers: [], actions: [], logs: [], files: [], sizes: [], layouts: [], quotes: [],

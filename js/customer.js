@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261104184942';
+import * as D from './data.js?v=20261109120943';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName, pendingSaves,
-} from './core.js?v=20261104184942';
-import { openDrop } from './drop.js?v=20261104184942';
-import { renderLayout } from './layout.js?v=20261104184942';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261104184942';
+} from './core.js?v=20261109120943';
+import { openDrop } from './drop.js?v=20261109120943';
+import { renderLayout } from './layout.js?v=20261109120943';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261109120943';
 
 let curId = null;
 let tab = 'overview';
@@ -111,6 +111,7 @@ function draw() {
       <span class="pill st-${st.k}"><span class="dot"></span>${esc(STATUS_TEXT[st.k])}</span>
       <span class="small muted">${c.first_contact ? `First contact ${fmtDate(c.first_contact)} · ${daysBetween(c.first_contact, todayISO()) === 0 ? 'new today' : daysBetween(c.first_contact, todayISO()) + ' days in'}` : ''}</span>
       <span class="qc">${c.phone ? `<a class="chip pick" href="tel:${esc(c.phone.replace(/[^\d+]/g, ''))}" title="Call">📞 ${esc(c.phone)}</a><button class="chip pick" type="button" data-copy="${esc(c.phone)}" title="Copy phone">Copy</button>` : ''}${c.email ? `<a class="chip pick" href="mailto:${esc(c.email)}" title="Email">✉ ${esc(c.email)}</a><button class="chip pick" type="button" data-copy="${esc(c.email)}" title="Copy email">Copy</button>` : ''}</span>
+      ${canWrite() ? `<button class="btn sm primary" type="button" id="cQuick" title="Rough cost + price range from a few sizes (Q)">⚡ Quick estimate</button>` : ''}
       ${canWrite() ? `<button class="btn sm" type="button" id="cDrop" title="Add files, emails or notes to this customer (D)">⬆ Drop into ${esc((c.name || 'this customer').split(' ')[0])}</button>` : ''}
       <span class="navpn"><button class="btn ghost sm" type="button" id="cPrev" title="Previous customer (←)" aria-label="Previous customer">‹</button><button class="btn ghost sm" type="button" id="cNext" title="Next customer (→)" aria-label="Next customer">›</button></span>
       <button class="x" type="button" aria-label="Close" id="cClose" title="Close (Esc)">×</button>
@@ -134,6 +135,7 @@ function draw() {
   $('#cNext', sheet).onclick = () => go(1);
   sheet.onkeydown = (e) => { const a = document.activeElement; if (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return; if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); };
   $('#cDrop', sheet)?.addEventListener('click', () => openDrop({ customerId: c.id }));
+  $('#cQuick', sheet)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261109120943'); openQuick(c); });
   $$('.step', sheet).forEach((b) => (b.onclick = () => { if (b.dataset.stage !== c.stage) moveStage(c, b.dataset.stage); }));
   $$('[data-tab]', sheet).forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
   wireNext(c);
@@ -506,4 +508,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261104184942';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261109120943';
