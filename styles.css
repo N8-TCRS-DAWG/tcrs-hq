@@ -652,3 +652,12 @@ body:has(.sheet-bg) #chatFab { bottom: 84px; }   /* keep the chat bubble off the
 @media (max-width: 900px) { .ag-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } .ag-team { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ag-pipe { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .ag-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ag-tile.wide { grid-column: span 2; } .ag-team { grid-template-columns: 1fr; } .ag-pipe { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ag-go { width: 100%; } .ag-head .row { width: 100%; } .ag-t { width: 54px; } }
 @media (prefers-reduced-motion: reduce) { .ag-go.live, .ag-pill, .ag-feed li.new { animation: none; } }
+.ag-bars { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.ag-bar { display: grid; grid-template-columns: 72px 1fr 92px; gap: 10px; align-items: center; font-size: 13px; }
+.ag-bar span { color: var(--muted); font-weight: 600; }
+.ag-bar b { text-align: right; font-variant-numeric: tabular-nums; }
+.ag-bar > div { display: flex; height: 18px; background: var(--sunk); border-radius: 5px; overflow: hidden; }
+.ag-bar i { height: 100%; transition: width .5s ease; }
+.b-rev { background: var(--price); } .b-cogs { background: var(--cost); } .b-ai { background: var(--gold); } .b-va { background: var(--amber); } .b-net { background: var(--green); }
+.ag-money-tiles { margin-top: 0; }
+@media (max-width: 560px) { .ag-bar { grid-template-columns: 60px 1fr 80px; } }

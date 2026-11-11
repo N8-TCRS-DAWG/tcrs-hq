@@ -1,6 +1,6 @@
 // AI team — DEMO. A scripted simulation with made-up customers.
 // It never reads or writes the database, never sends anything, and never calls Claude.
-import { $, esc, money0, estRange } from './core.js?v=20261111001108';
+import { $, esc, money0, estRange } from './core.js?v=20261111163514';
 
 /* The team. `real` = what exists in HQ today (kept honest; update as things get built). */
 const TEAM = [
@@ -77,7 +77,7 @@ const LEADS = [
 const MAX_LEADS = 16;   // two passes through the list = one “demo day”
 
 const fresh = () => ({ on: false, speed: 1, n: 0, clock: 8 * 60, spawned: 0, leads: [], feed: [], done: false, rate: 25,
-  tasks: {}, last: {}, mins: 0, secs: [], handoffs: 0, sold: 0, won: 0, lost: 0 });
+  tasks: {}, last: {}, mins: 0, vaMins: 0, secs: [], handoffs: 0, sold: 0, cogs: 0, won: 0, lost: 0, aiTask: 0.50 });
 let A = fresh();
 let timer = null;
 export const _state = () => A;   // for tests
@@ -100,11 +100,11 @@ function runStep(l) {
   if (s.a !== 'cust') {
     A.tasks[s.a] = (A.tasks[s.a] || 0) + 1;
     A.last[s.a] = { text: `${l.label}: ${text}`, n: A.n };
-    if (s.m) A.mins += MIN[s.m];
+    if (s.m) { if (s.a === 'va') A.vaMins += MIN[s.m]; else A.mins += MIN[s.m]; }
     if (s.sec) A.secs.push(s.sec);
     if (s.a === 'va') A.handoffs++;
   }
-  if (l.stage === 'paid' && s.st === 'paid') { A.sold += l.cost * 1.25; A.won++; }
+  if (l.stage === 'paid' && s.st === 'paid') { A.sold += l.cost * 1.25; A.cogs += l.cost; A.won++; }
   if (s.st === 'lost') A.lost++;
   l.wait = s.gap || 1;
   say(s.a, l, text);
@@ -159,6 +159,27 @@ function paint() {
     <div class="ag-tile"><b>${hrs.toFixed(1)} h</b><span>person-hours saved <i>(assumed)</i>${A.rate ? ` ≈ ${money0(hrs * A.rate)}` : ''}</span></div>
     <div class="ag-tile wide">${donut(noHuman)}<div><b>${closed - A.handoffs} of ${closed}</b><span>finished leads needed no person · ${A.handoffs} handed off</span></div></div>
     <div class="ag-tile"><b>${money0(A.sold)}</b><span>sold · ${money0(open$)} still open</span></div>`;
+  const rev = A.sold, aiCost = agentTasks * A.aiTask, vaCost = (A.vaMins / 60) * A.rate;
+  const exp = A.cogs + aiCost + vaCost, gross = rev - A.cogs, net = rev - exp;
+  const baseline = (A.mins / 60) * A.rate;           // what the same agent work costs if people do it
+  const autoCost = aiCost + vaCost;
+  const roi = autoCost > 0 ? (baseline - autoCost) / autoCost : null;
+  const pct = (x) => (rev > 0 ? Math.max(0, Math.min(100, (x / rev) * 100)) : 0);
+  $('#agMoney', root).innerHTML = rev <= 0 ? '<p class="small muted">Money shows up once the first demo project is paid.</p>' : `
+    <div class="ag-bars" role="img" aria-label="Revenue ${money0(rev)}, expenses ${money0(exp)}">
+      <div class="ag-bar"><span>Revenue</span><div><i class="b-rev" style="width:100%"></i></div><b>${money0(rev)}</b></div>
+      <div class="ag-bar"><span>Expenses</span><div><i class="b-cogs" style="width:${pct(A.cogs)}%" title="Product cost ${money0(A.cogs)}"></i><i class="b-ai" style="width:${pct(aiCost)}%" title="AI cost ${money0(aiCost)}"></i><i class="b-va" style="width:${pct(vaCost)}%" title="Assistant time ${money0(vaCost)}"></i></div><b>${money0(exp)}</b></div>
+      <div class="ag-bar"><span>Profit</span><div><i class="b-net" style="width:${pct(net)}%"></i></div><b>${money0(net)}</b></div>
+      <div class="small muted">Expenses = product cost ${money0(A.cogs)} + AI ${money0(aiCost)} + assistant ${money0(vaCost)}. Rent, trucks and payroll beyond these are not in the demo.</div>
+    </div>
+    <div class="ag-tiles ag-money-tiles">
+      <div class="ag-tile"><b>${rev ? Math.round((gross / rev) * 100) + '%' : '—'}</b><span>gross margin (before AI/assistant)</span></div>
+      <div class="ag-tile"><b>${rev ? Math.round((net / rev) * 100) + '%' : '—'}</b><span>profit rate (of revenue)</span></div>
+      <div class="ag-tile"><b>${A.won ? money0(net / A.won) : '—'}</b><span>profit per won project (avg)</span></div>
+      <div class="ag-tile"><b>${A.spawned ? money0(net / A.spawned) : '—'}</b><span>profit per lead that came in</span></div>
+      <div class="ag-tile"><b>${roi == null ? '—' : Math.round(roi * 100) + '%'}</b><span>ROI on automation <i>(assumed)</i></span></div>
+      <div class="ag-tile"><b>${money0(autoCost)} vs ${money0(baseline)}</b><span>this work: AI+assistant vs all-people <i>(assumed)</i></span></div>
+    </div>`;
   $('#agTeam', root).innerHTML = TEAM.map((t) => {
     const last = A.last[t.k];
     const busy = A.on && last && A.n - last.n <= 1;
@@ -190,6 +211,8 @@ export function renderAgents(v) {
         </div>
       </div>
       <div class="ag-tiles" id="agTiles" aria-live="off"></div>
+      <h2>Money — demo numbers, not your books</h2>
+      <div id="agMoney"></div>
       <h2>The team</h2>
       <div class="ag-team" id="agTeam"></div>
       <h2>Leads moving through</h2>
@@ -199,6 +222,7 @@ export function renderAgents(v) {
       <details class="ag-assume"><summary>How “hours saved” is counted (assumptions you can challenge)</summary>
         <p class="small muted">Each agent task is credited with the minutes a person would likely spend on it. These minutes are Claude’s assumptions, not measured at TCRS. The reply times, the share of leads handed to a person, and the dollar amounts are scripted for the demo and are not a forecast.</p>
         <table class="ag-tbl">${Object.keys(MIN).map((k) => `<tr><td>${MIN_LABEL[k]}</td><td>${MIN[k]} min</td></tr>`).join('')}</table>
+        <p class="small muted">ROI (return on investment) here = (what the agents’ work would cost people − what the AI + assistant cost) ÷ AI + assistant cost. AI cost is assumed at $0.50 per agent task. Demo profit leaves out rent, trucks and the rest of payroll.</p>
         <label class="row small">Value of one person-hour: $<input type="number" id="agRate" min="0" step="1" value="${A.rate}" style="width:72px"> <span class="muted">(assumed; set your own)</span></label>
       </details>
     </div>`;
