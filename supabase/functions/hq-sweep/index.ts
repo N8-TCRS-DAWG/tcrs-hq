@@ -75,7 +75,7 @@ Rules:
 - actions_add: only real next steps that are not already in the file's open steps. whose = who must act next. If a customer asked us something, that's an "us" step. If we asked them, it's a "customer" step. Due dates only when stated or obvious (e.g. "by Friday").
 - stage: one of ${STAGES.join(", ")} only when the emails clearly show a move (estimate/quote sent, quote accepted, payment made, order placed, delivery/install scheduled). Otherwise null.
 - first_contact = true only when this thread is a NEW person's first inquiry to TCRS and nobody from TCRS has replied in it yet.
-- reply: only when first_contact is true. {"body":"plain-text email"}. Warm, short (under 120 words), from Nathan. Thank them for reaching out, one line acknowledging their project, then ask ONLY for what's still missing from: full name, best phone number, project address, products needed, services needed (delivery, install, design), and layout / photos / dimensions / inspiration pictures. No prices, no promises, no dates. Sign off:
+- reply: only when first_contact is true. {"body":"plain-text email"}. Warm, short (under 120 words), from Nathan. Thank them for reaching out, one line acknowledging their project, then ask ONLY for what's still missing from: full name, best phone number, project address, products needed, services needed (delivery, install, design), and layout / photos / dimensions / inspiration pictures. Always end the questions with "And how did you hear about us?" unless the email already says how they found TCRS. No prices, no promises, no dates. Sign off:
 Nathan
 Twin Cities Remodeling Supply{PHONE}`;
 
