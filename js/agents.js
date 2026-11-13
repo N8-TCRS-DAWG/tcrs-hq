@@ -1,6 +1,6 @@
 // AI team — DEMO. A scripted simulation with made-up customers.
 // It never reads or writes the database, never sends anything, and never calls Claude.
-import { $, esc, money0, estRange } from './core.js?v=20261112192956';
+import { $, esc, money0, estRange } from './core.js?v=20261113003207';
 
 /* The team. `real` = what exists in HQ today (kept honest; update as things get built). */
 const TEAM = [

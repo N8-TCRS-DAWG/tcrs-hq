@@ -1,9 +1,9 @@
 // Jarvis: walk up, say "brief me", see the business as a live constellation.
 // Admin → key numbers + the moves that matter. Sales → your day.
 // The map is drawn from HQ data (never invented) and updates live; Claude only narrates and picks what to highlight.
-import * as D from './data.js?v=20261112192956';
-import { S, esc, money0, status, isPrePaid, openActions, todayISO, daysBetween } from './core.js?v=20261112192956';
-import { value, received } from './board.js?v=20261112192956';
+import * as D from './data.js?v=20261113003207';
+import { S, esc, money0, status, isPrePaid, openActions, todayISO, daysBetween } from './core.js?v=20261113003207';
+import { value, received } from './board.js?v=20261113003207';
 
 const D3 = 'https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js';
 const HUBS = [
@@ -13,7 +13,7 @@ const HUBS = [
   { id: 'h-won', label: 'Won', k: 'won' },
 ];
 const PRODS = ['Cabinets', 'Countertops', 'Flooring', 'Appliances', 'Furniture', 'Doors & trim', 'Garage doors', 'Sauna / plunge'];
-const J = { sim: null, svg: null, focus: new Set(), view: 'all', listening: false, speaking: false, busy: false, said: '', moves: [], started: false, unsub: null, rec: null };
+const J = { idleT: null, tourT: null, sim: null, svg: null, focus: new Set(), view: 'all', listening: false, speaking: false, busy: false, said: '', moves: [], started: false, unsub: null, rec: null };
 
 /* ───────── data ───────── */
 function bucket(c) {
@@ -198,6 +198,40 @@ function draw() {
   applyFocus();
 }
 
+/* ───────── ambient tour (office screen): after 45 s untouched, walk the board slowly ───────── */
+const HUBNAME = { ours: 'Waiting on us', theirs: 'Waiting on customers', sup: 'Waiting on suppliers & crews', won: 'Won jobs' };
+function stopTour(reset) {
+  clearTimeout(J.idleT); clearInterval(J.tourT);
+  if (J.tourT && reset) { J.tourT = null; J.view = 'all'; J.focus.clear(); applyFocus(); paintSub(J.said || 'Tap the orb or press Space and say “brief me”.'); }
+  J.tourT = null;
+  J.idleT = setTimeout(startTour, 45000);
+}
+function startTour() {
+  if (!document.getElementById('jvRoot')) return;
+  if (J.speaking || J.listening || J.busy) { stopTour(false); return; }
+  const stops = () => {
+    const s = snapshot();
+    const top = [...s.open].sort((a, b) => value(b) - value(a)).slice(0, 8);
+    return [{ hub: 'ours' }, ...top.slice(0, 4).map((c) => ({ c })), { hub: 'theirs' }, ...top.slice(4).map((c) => ({ c })), { hub: 'won' }];
+  };
+  let i = 0;
+  const step = () => {
+    const list = stops(); if (!list.length || !J.svg) return;
+    const st = list[i++ % list.length];
+    if (st.hub) {
+      const n = S.customers.filter((c) => !c.lost && bucket(c) === st.hub).length;
+      J.view = st.hub; J.focus.clear();
+      paintSub(`${HUBNAME[st.hub]} · ${n}`, true);
+    } else {
+      const c = st.c, a = openActions(c.id)[0];
+      J.view = 'all'; J.focus = new Set([c.id]);
+      paintSub(`${c.name} — ${c.stage}${value(c) ? ', ' + money0(value(c)) : ''}. ${a ? 'Next: ' + a.title + (a.due ? ' (due ' + a.due.slice(5) + ')' : '') : 'No next step set.'}`, true);
+    }
+    applyFocus();
+  };
+  step(); J.tourT = setInterval(step, 9000);
+}
+
 export function renderJarvis(v) {
   document.body.classList.add('jv-on');
   if (!document.getElementById('jvRoot')) {
@@ -227,9 +261,12 @@ export function renderJarvis(v) {
         else if (e.key === 'Escape') { speechSynthesis?.cancel(); location.hash = 'board'; }
       });
       window.addEventListener('resize', () => { if (document.getElementById('jvRoot')) draw(); });
-      window.addEventListener('hashchange', () => { if (location.hash !== '#jarvis') { document.body.classList.remove('jv-on'); speechSynthesis?.cancel(); J.rec?.stop(); J.sim?.stop(); J.svg = null; } });
+      window.addEventListener('hashchange', () => { if (location.hash !== '#jarvis') { clearTimeout(J.idleT); clearInterval(J.tourT); J.tourT = null; document.body.classList.remove('jv-on'); speechSynthesis?.cancel(); J.rec?.stop(); J.sim?.stop(); J.svg = null; } });
     }
     loadD3().then(draw).catch((e) => paintSub(e.message));
+    ['pointerdown', 'keydown'].forEach((ev) => root.addEventListener(ev, () => stopTour(true), true));
+    if (!J.tourKeys) { J.tourKeys = true; document.addEventListener('keydown', () => { if (document.getElementById('jvRoot')) stopTour(true); }, true); }
+    stopTour(false);
   } else if (window.d3) draw();   // live data changed → redraw in place, positions kept
   kpis(); paintMoves(); orbState();
 }
