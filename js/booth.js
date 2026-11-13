@@ -1,8 +1,8 @@
 // Booth mode: 15-second lead capture at a trade show, on a phone.
 // Each lead lands in HQ (source = the show), gets a "send follow-up" step, and is queued for a
 // personalized follow-up email that the Gmail script saves as a DRAFT the same evening (never sent).
-import * as D from './data.js?v=20261112181532';
-import { S, esc, $, $$, todayISO, toast, canWrite, fmtDate } from './core.js?v=20261112181532';
+import * as D from './data.js?v=20261112182510';
+import { S, esc, $, $$, todayISO, toast, canWrite, fmtDate } from './core.js?v=20261112182510';
 
 export const SHOW = { key: 'eagan-2026-11-14', name: 'Trade show – Eagan 11/14/26', date: '2026-11-14' };
 const PRODUCTS = ['Cabinets', 'Countertops', 'Flooring', 'Appliances', 'Furniture', 'Sauna / plunge', 'Garage doors', 'Other'];

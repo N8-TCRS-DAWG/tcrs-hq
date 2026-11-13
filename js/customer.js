@@ -1,13 +1,13 @@
 // One customer, everything in one place.
-import * as D from './data.js?v=20261112181532';
+import * as D from './data.js?v=20261112182510';
 import {
   S, STAGES, PRODUCTS, SERVICES, CTYPES, FTYPES, WHOSE, esc, $, $$, n, money, money0, status, score, stageIdx,
   openActions, custActions, custFiles, custLogs, custSizes, custQuote, quoteCalc, revisionInfo, gateMissing, fmtDate,
   todayISO, addDays, daysBetween, toast, canWrite, logEvent, patchCustomer, STATUS_TEXT, settings, referralLines, personName, pendingSaves,
-} from './core.js?v=20261112181532';
-import { openDrop } from './drop.js?v=20261112181532';
-import { renderLayout } from './layout.js?v=20261112181532';
-import { renderQuote, learnFromQuote } from './quote.js?v=20261112181532';
+} from './core.js?v=20261112182510';
+import { openDrop } from './drop.js?v=20261112182510';
+import { renderLayout } from './layout.js?v=20261112182510';
+import { renderQuote, learnFromQuote } from './quote.js?v=20261112182510';
 
 let curId = null;
 let tab = 'overview';
@@ -135,7 +135,7 @@ function draw() {
   $('#cNext', sheet).onclick = () => go(1);
   sheet.onkeydown = (e) => { const a = document.activeElement; if (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return; if (e.key === 'ArrowLeft') go(-1); if (e.key === 'ArrowRight') go(1); };
   $('#cDrop', sheet)?.addEventListener('click', () => openDrop({ customerId: c.id }));
-  $('#cQuick', sheet)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261112181532'); openQuick(c); });
+  $('#cQuick', sheet)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261112182510'); openQuick(c); });
   $$('.step', sheet).forEach((b) => (b.onclick = () => { if (b.dataset.stage !== c.stage) moveStage(c, b.dataset.stage); }));
   $$('[data-tab]', sheet).forEach((b) => (b.onclick = () => { tab = b.dataset.tab; draw(); }));
   wireNext(c);
@@ -320,6 +320,10 @@ function overview(el, c) {
           <tr><td>Intake quality</td><td class="small">${[['photos', 'Photos'], ['layout', 'Layout'], ['dims', 'Sizes'], ['finishes', 'Finishes']].map(([k, l]) => `<span style="color:${sc.ip[k] ? 'var(--green)' : 'var(--muted)'}">${sc.ip[k] ? '✓' : '○'} ${l}</span>`).join(' · ')}</td><td class="n">${Math.round(sc.parts.intake)}/${sc.w.intake}</td></tr>
         </table>
       </section>
+      <section class="panel"><h3>Follow-ups</h3>
+        <label class="small row" style="margin-top:6px"><input type="checkbox" id="noChase" ${c.data?.noChase ? 'checked' : ''}> Don't write automatic follow-up nudges for this customer</label>
+        <p class="small muted" style="margin:4px 0 0">${c.data?.chase?.n ? `Nudges drafted: ${c.data.chase.n}, last ${fmtDate(String(c.data.chase.last).slice(0, 10))}.` : c.data?.chase?.why ? `Chaser skipped: ${esc(c.data.chase.why)}` : 'The chaser drafts a short nudge (Gmail draft, never sent) when we sent the last email 3+ days ago.'}</p>
+      </section>
       <section class="panel"><h3>Layout revisions</h3>
         <div class="revbox ${rv.over ? 'over' : ''}" style="margin-top:6px">
           <span class="big">${rv.used}</span><span>of ${rv.allowed} included</span>
@@ -342,6 +346,7 @@ function overview(el, c) {
   $$('[data-serv]', el).forEach((b) => (b.onclick = () => toggleArr(c, 'services', b.dataset.serv)));
   $$('[data-conv]', el).forEach((b) => (b.onclick = () => patchCustomer(c, { conversion: c.conversion === +b.dataset.conv ? null : +b.dataset.conv })));
   $('#rep', el).onchange = (e) => patchCustomer(c, { repeat: e.target.checked });
+  $('#noChase', el)?.addEventListener('change', (e) => patchCustomer(c, { data: { ...(c.data || {}), noChase: e.target.checked } }));
   $('#intakeAll', el).onchange = (e) => patchCustomer(c, { intake_complete: e.target.checked });
   $('#revPlus', el)?.addEventListener('click', () => bumpRevision(c, +1, 'Added by hand'));
   $('#revMinus', el)?.addEventListener('click', () => { if ((c.revisions || 0) > 0) bumpRevision(c, -1, 'Removed by hand'); });
@@ -508,4 +513,4 @@ function moneyTab(el, c) {
     await D.update('quotes', q.id, { sections: nq.sections });
   }));
 }
-import { lineCalc as quoteLineCalc } from './core.js?v=20261112181532';
+import { lineCalc as quoteLineCalc } from './core.js?v=20261112182510';

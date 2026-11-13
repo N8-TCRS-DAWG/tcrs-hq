@@ -1,10 +1,10 @@
 // Quick estimate: a rough COST + PRICE range from a few key dimensions, meant to go back to a new lead
 // within 5–20 minutes. Fills the lead's Estimate (same PDF / "mark sent" flow as the Estimate → Quote tab).
 // COST = what TCRS pays. PRICE = what the customer pays. Rates live in settings.main.quickRates (editable here).
-import * as D from './data.js?v=20261112181532';
-import { S, esc, $, $$, n, r2, money0, settings, toast, canWrite, logEvent, patchCustomer, custQuote, estRange } from './core.js?v=20261112181532';
-import { modal } from './customer.js?v=20261112181532';
-import { ensureQuote, openDoc } from './quote.js?v=20261112181532';
+import * as D from './data.js?v=20261112182510';
+import { S, esc, $, $$, n, r2, money0, settings, toast, canWrite, logEvent, patchCustomer, custQuote, estRange } from './core.js?v=20261112182510';
+import { modal } from './customer.js?v=20261112182510';
+import { ensureQuote, openDoc } from './quote.js?v=20261112182510';
 
 /* Defaults. "src" says where each number came from so nobody mistakes a placeholder for a real price. */
 export const QR_DEFAULT = {
