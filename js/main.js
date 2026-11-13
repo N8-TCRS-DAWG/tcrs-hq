@@ -1,17 +1,18 @@
 // Boot, login, top bar, routing, live refresh.
-import * as D from './data.js?v=20261112182510';
-import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261112182510';
-import { wireChat } from './chat.js?v=20261112182510';
-import { renderCRM } from './crm.js?v=20261112182510';
-import { renderBoard, renderRace, renderTV } from './board.js?v=20261112182510';
-import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261112182510';
-import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261112182510';
-import { renderHelp, renderBrain } from './help.js?v=20261112182510';
-import { renderBooth } from './booth.js?v=20261112182510';
-import { renderMoney } from './money.js?v=20261112182510';
-import { renderAgents } from './agents.js?v=20261112182510';
+import * as D from './data.js?v=20261112192956';
+import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261112192956';
+import { wireChat } from './chat.js?v=20261112192956';
+import { renderCRM } from './crm.js?v=20261112192956';
+import { renderBoard, renderRace, renderTV } from './board.js?v=20261112192956';
+import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261112192956';
+import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261112192956';
+import { renderHelp, renderBrain } from './help.js?v=20261112192956';
+import { renderJarvis } from './jarvis.js?v=20261112192956';
+import { renderBooth } from './booth.js?v=20261112192956';
+import { renderMoney } from './money.js?v=20261112192956';
+import { renderAgents } from './agents.js?v=20261112192956';
 
-import { BUILD } from './version.js?v=20261112182510';
+import { BUILD } from './version.js?v=20261112192956';
 const app = $('#app');
 
 /* Updates: if a newer HQ is published, reload (TV) or offer a one-click reload. */
@@ -41,7 +42,7 @@ window.addEventListener('error', (e) => {
   b.querySelector('button').onclick = () => location.reload();
   document.body.appendChild(b);
 });
-const VIEWS = { board: 'Board', race: 'Race', crm: 'CRM', agents: 'AI team', money: 'Money', booth: 'Booth', help: 'Help & SOPs', brain: 'Prices & partners' };
+const VIEWS = { jarvis: 'Jarvis', board: 'Board', race: 'Race', crm: 'CRM', agents: 'AI team', money: 'Money', booth: 'Booth', help: 'Help & SOPs', brain: 'Prices & partners' };
 
 const AUTH_LINK = (/type=(invite|recovery|signup|magiclink)/.exec(location.hash) || [])[1] || null;
 const AUTH_ERR = /error_description=([^&]+)/.exec(location.hash)?.[1];
@@ -118,7 +119,7 @@ function route() {
 }
 
 function shell(active) {
-  const flow = ['board', 'race', 'crm', 'agents', ...(S.role === 'admin' ? ['money'] : []), ...(todayISO() <= '2026-11-16' ? ['booth'] : []), 'help', 'brain'].map((k) =>
+  const flow = ['jarvis', 'board', 'race', 'crm', 'agents', ...(S.role === 'admin' ? ['money'] : []), ...(todayISO() <= '2026-11-16' ? ['booth'] : []), 'help', 'brain'].map((k) =>
     `<a href="#${k}" class="${active === k ? 'on' : ''}">${VIEWS[k]}</a>`).join('');
   const me = S.profiles.find((p) => p.id === S.me?.id);
   return `
@@ -148,6 +149,7 @@ function renderView() {
   else if (k === 'agents') renderAgents(v);
   else if (k === 'money') renderMoney(v);
   else if (k === 'booth') renderBooth(v);
+  else if (k === 'jarvis') renderJarvis(v);
   else if (k === 'help') renderHelp(v);
   else if (k === 'brain') renderBrain(v);
 }
@@ -194,6 +196,7 @@ function wireAnywhere() {
     if (e.key === 'd' || e.key === 'D') { e.preventDefault(); openDrop({ customerId: currentCustomerId() }); }
     else if (e.key === '/' && !currentCustomerId()) { const q = $('#bq'); if (q) { e.preventDefault(); q.focus(); } }
     else if (e.key === 'n' && !currentCustomerId()) { e.preventDefault(); openDrop({ manual: true }); }
+    else if ((e.key === 'j' || e.key === 'J') && !currentCustomerId()) { e.preventDefault(); location.hash = 'jarvis'; }
   });
 }
 

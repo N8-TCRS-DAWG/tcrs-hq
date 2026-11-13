@@ -1,8 +1,8 @@
 // Booth mode: 15-second lead capture at a trade show, on a phone.
 // Each lead lands in HQ (source = the show), gets a "send follow-up" step, and is queued for a
 // personalized follow-up email that the Gmail script saves as a DRAFT the same evening (never sent).
-import * as D from './data.js?v=20261112182510';
-import { S, esc, $, $$, todayISO, toast, canWrite, fmtDate } from './core.js?v=20261112182510';
+import * as D from './data.js?v=20261112192956';
+import { S, esc, $, $$, todayISO, toast, canWrite, fmtDate } from './core.js?v=20261112192956';
 
 export const SHOW = { key: 'eagan-2026-11-14', name: 'Trade show – Eagan 11/14/26', date: '2026-11-14' };
 const PRODUCTS = ['Cabinets', 'Countertops', 'Flooring', 'Appliances', 'Furniture', 'Sauna / plunge', 'Garage doors', 'Other'];
@@ -42,7 +42,7 @@ export function renderBooth(v) {
     </form>
     <h2>Captured at the show</h2>
     <ol class="bo-list">${leads.length ? leads.map((c) => `<li><a href="#c-${c.id}"><b>${esc(c.name)}</b></a> <span class="small muted">${esc([(c.products || []).join(', '), c.data?.booth?.when, c.phone || c.email].filter(Boolean).join(' · '))}</span> <span class="chip ${c.data?.booth?.followed ? '' : 'ag-amber'}">${c.data?.booth?.followed ? 'Follow-up drafted ' + fmtDate(c.data.booth.followed.slice(0, 10)) : (c.email ? 'Follow-up queued' : 'No email — call/text')}</span></li>`).join('') : '<li class="muted">No leads yet.</li>'}</ol>
-    <p class="small muted">Follow-up emails: the Gmail script writes a personal thank-you with their offer and the intake link, and saves it as a <b>Gmail draft</b> (7pm daily, or run <b>chaseNow</b>). Nothing sends until you press Send.</p>
+    <p class="small muted">Follow-up emails: Claude writes a personal thank-you with their offer and the intake link, and saves it as a <b>Gmail draft</b> (Saturday ~8:10pm, then each weekday morning). Nothing sends until you press Send.</p>
   </div>`;
   const keep = () => { F.name = $('#boName', v).value; F.phone = $('#boPhone', v).value; F.email = $('#boEmail', v).value; F.city = $('#boCity', v).value; F.offer = $('#boOffer', v).value; F.notes = $('#boNotes', v).value; };
   $$('[data-ct]', v).forEach((b) => (b.onclick = () => { keep(); F.ctype = b.dataset.ct; renderBooth(v); }));

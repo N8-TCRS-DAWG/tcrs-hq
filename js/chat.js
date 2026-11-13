@@ -1,11 +1,11 @@
 // Chat updates: type or speak plain English ("Bri approved the quote, install the 18th") and the right
 // customer files update. Claude proposes the changes; one tap applies them; Undo puts everything back.
-import * as D from './data.js?v=20261112182510';
-import { S, STAGES, esc, $, todayISO, openActions, toast, canWrite, status, isPrePaid, daysBetween } from './core.js?v=20261112182510';
+import * as D from './data.js?v=20261112192956';
+import { S, STAGES, esc, $, todayISO, openActions, toast, canWrite, status, isPrePaid, daysBetween } from './core.js?v=20261112192956';
 
 const FIELDS = ['name', 'phone', 'email', 'address', 'city', 'zip', 'source', 'ctype', 'budget', 'timeline', 'finishes', 'measure_date', 'delivery_date', 'install_date', 'est_price'];
 const SYSTEM = `You update TCRS (Twin Cities Remodeling Supply) customer files from a salesperson's quick note (typed or dictated, may be messy).
-You are also "Jarvis": the salesperson may ASK about the business instead of giving an update (e.g. "brief me", "who's waiting on me?", "what's quiet?", "how much is in the pipeline?", "what should I do first?").
+The salesperson may also ASK about the business instead of giving an update (e.g. "brief me", "who's waiting on me?", "what's quiet?", "how much is in the pipeline?", "what should I do first?").
 For a question: return ops [] and put the answer in "reply" — plain text, at most 8 short lines, most important first, use customer names and real numbers from the data only. For "brief me" / "what should I do": (1) steps waiting on us that are due or overdue, (2) customers quiet longest whose move it is, (3) biggest open deals, (4) one suggested first move. Never invent numbers; say "not in HQ" when the data doesn't have it.
 Return ONLY JSON:
 {"reply":"one short sentence saying what you'll change (or what you need) — or, for a question, the answer",
@@ -37,14 +37,14 @@ const lines = (t) => esc(t).replace(/\n/g, '<br>');
 export function wireChat() {
   if (!canWrite() || document.getElementById('chatFab')) return;
   const fab = document.createElement('button');
-  fab.id = 'chatFab'; fab.type = 'button'; fab.className = 'chat-fab'; fab.title = 'Jarvis: ask about the business or update any lead in plain English (J, or speak)';
-  fab.innerHTML = '<span aria-hidden="true">✦</span> Jarvis';
+  fab.id = 'chatFab'; fab.type = 'button'; fab.className = 'chat-fab'; fab.title = 'Chat: ask about the business or update any lead in plain English (C, or speak)';
+  fab.innerHTML = '<span aria-hidden="true">💬</span> Chat';
   fab.onclick = () => (box ? closeChat() : openChat());
   document.body.appendChild(fab);
   document.addEventListener('keydown', (e) => {
     const a = document.activeElement;
     if (e.ctrlKey || e.metaKey || e.altKey || (a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) || a?.isContentEditable || document.querySelector('.top-modal, .sheet-bg')) return;
-    if (e.key === 'j' || e.key === 'J') { e.preventDefault(); box ? $('#chT', box)?.focus() : openChat(); }
+    if (e.key === 'c' || e.key === 'C') { e.preventDefault(); box ? $('#chT', box)?.focus() : openChat(); }
   });
 }
 
@@ -57,7 +57,7 @@ function openChat() {
   box = document.createElement('section');
   box.className = 'chat-box'; box.setAttribute('aria-label', 'Update leads');
   const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  box.innerHTML = `<div class="chat-h"><b>Jarvis</b><button class="btn ghost sm" type="button" id="chSay" title="Read answers aloud" aria-pressed="${speak}">${speak ? '🔊' : '🔈'}</button><span class="small muted" id="chCtx"></span><button class="x" type="button" aria-label="Close">×</button></div>
+  box.innerHTML = `<div class="chat-h"><b>Chat</b><button class="btn ghost sm" type="button" id="chSay" title="Read answers aloud" aria-pressed="${speak}">${speak ? '🔊' : '🔈'}</button><span class="small muted" id="chCtx"></span><button class="x" type="button" aria-label="Close">×</button></div>
     <div class="chat-log" id="chLog">${hist.length ? '' : `<p class="small muted">Ask anything ("brief me", "who owes us a reply?") or tell me an update, e.g. "Bri approved the quote, install the 18th" · "Seham's garage door is dead, went elsewhere" · "New lead: Tom 612-555-0100, wants a vanity in Edina".</p>`}</div>
     <div class="chat-chips">${['Brief me', 'Who is waiting on me?', 'What has gone quiet?', 'Biggest open deals'].map((q) => `<button type="button" class="chip pick" data-q="${q}">${q}</button>`).join('')}</div>
     <form class="chat-in" id="chF"><textarea id="chT" rows="2" placeholder="Ask, or tell me what happened"></textarea>
@@ -114,7 +114,7 @@ function brief() {
 }
 
 function recent() {
-  const r = hist.slice(-7, -1).filter((m) => m.text).map((m) => `${m.from === 'me' ? 'Salesperson' : 'Jarvis'}: ${String(m.text).slice(0, 400)}`);
+  const r = hist.slice(-7, -1).filter((m) => m.text).map((m) => `${m.from === 'me' ? 'Salesperson' : 'HQ'}: ${String(m.text).slice(0, 400)}`);
   return r.length ? `\nRecent chat (for follow-up questions only):\n${r.join('\n')}\n` : '';
 }
 async function send(text) {

@@ -1,6 +1,6 @@
 // Help & SOPs, and "Prices & partners" (what HQ learns from + settings).
-import * as D from './data.js?v=20261112182510';
-import { S, STAGES, PRODUCTS, esc, $, $$, n, toast, canWrite, settings, DEFAULT_SETTINGS, money, fmtDate } from './core.js?v=20261112182510';
+import * as D from './data.js?v=20261112192956';
+import { S, STAGES, PRODUCTS, esc, $, $$, n, toast, canWrite, settings, DEFAULT_SETTINGS, money, fmtDate } from './core.js?v=20261112192956';
 
 const FORMS = 'https://script.google.com/macros/s/AKfycby_jpUiOvp36ytos3qfvdOpeaG_xvmkWuZLqGlufbKH9vlwi36wJmW0ZbyqJmWY6iix/exec';
 export const STARTER_DOCS = [
@@ -168,8 +168,8 @@ function settingsTab(el, admin) {
       ${['name', 'address', 'phone', 'email', 'web'].map((k) => `<label class="field"><span class="lbl">${k}</span><input type="text" data-co="${k}" value="${esc(st.company[k])}" ${admin ? '' : 'disabled'}></label>`).join('')}</div>
     <h3 style="margin-top:14px">Inbox sweep (9am + 9pm)</h3>
     <label class="row small" style="gap:8px;margin-top:6px"><input type="checkbox" id="sAuto" ${st.sweep?.autoSend ? 'checked' : ''} ${admin ? '' : 'disabled'}> Auto-send the first reply to brand-new email leads (thanks + intake questions). Off = saved as a Gmail draft for you to send.</label>
-    <h3 style="margin-top:14px">Follow-up chaser (weekdays ~8:30am)</h3>
-    <p class="small muted" style="margin:4px 0 6px">When <b>we</b> sent the last email and the customer has been quiet, Claude writes a short nudge and saves it as a <b>Gmail draft</b> in that thread. It never sends. ${(() => { const r = S.settings.find((x) => x.id === 'sweep')?.data?.chaseRuns?.[0]; return r ? `Last run ${fmtDate(r.at.slice(0, 10))} ${new Date(r.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}: ${r.drafts || 0} draft${r.drafts === 1 ? '' : 's'}${(r.names || []).length ? ' (' + esc(r.names.join(', ')) + ')' : ''}, ${r.notQuiet || 0} not quiet yet, ${r.skipped || 0} skipped.` : 'Not run yet — in the Gmail script, run <b>installChase</b> once.'; })()}</p>
+    <h3 style="margin-top:14px">Follow-up chaser (weekdays ~7:40am)</h3>
+    <p class="small muted" style="margin:4px 0 6px">When <b>we</b> sent the last email and the customer has been quiet, Claude writes a short nudge and saves it as a <b>Gmail draft</b> in that thread. It never sends. ${(() => { const r = S.settings.find((x) => x.id === 'sweep')?.data?.chaseRuns?.[0]; return r ? `Last run ${fmtDate(r.at.slice(0, 10))} ${new Date(r.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}: ${r.drafts || 0} draft${r.drafts === 1 ? '' : 's'}${(r.names || []).length ? ' (' + esc(r.names.join(', ')) + ')' : ''}, ${r.notQuiet || 0} not quiet yet, ${r.skipped || 0} skipped.` : 'Runs as a scheduled Claude task each weekday morning; first run Fri 11/13.'; })()}</p>
     ${(() => { const ch = S.settings.find((x) => x.id === 'sweep')?.data?.chase || {}; return `<label class="row small" style="gap:8px"><input type="checkbox" id="chOn" ${ch.off ? '' : 'checked'} ${admin ? '' : 'disabled'}> Chaser on</label>
     <div class="fields" style="margin-top:6px"><label class="field"><span class="lbl">Nudge after quiet (days)</span><input type="text" id="chDays" value="${ch.days || 3}" ${admin ? '' : 'disabled'}></label><label class="field"><span class="lbl">Max nudges per lead</span><input type="text" id="chMax" value="${ch.max || 2}" ${admin ? '' : 'disabled'}></label></div>`; })()}
     ${admin ? '<button class="btn primary" type="button" id="sSave" style="margin-top:12px">Save settings</button>' : ''}</section>`;

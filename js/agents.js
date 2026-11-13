@@ -1,13 +1,13 @@
 // AI team — DEMO. A scripted simulation with made-up customers.
 // It never reads or writes the database, never sends anything, and never calls Claude.
-import { $, esc, money0, estRange } from './core.js?v=20261112182510';
+import { $, esc, money0, estRange } from './core.js?v=20261112192956';
 
 /* The team. `real` = what exists in HQ today (kept honest; update as things get built). */
 const TEAM = [
   { k: 'voice', icon: '📞', name: 'Receptionist', role: 'Answers and returns phone calls, qualifies the lead', real: 'Not built', tone: 'red', note: 'Needs a phone/voice service. Nothing is chosen or paid for yet.' },
   { k: 'resp', icon: '✉️', name: 'Lead responder', role: 'Replies fast by email or text, asks only for what is missing, books the measure', real: 'Partly built', tone: 'amber', note: 'HQ inbox sweep already drafts the first reply. Booking is not built.' },
   { k: 'est', icon: '📐', name: 'Estimator', role: 'Turns photos, sketches and layouts into sizes and a rough price range', real: 'Partly built', tone: 'amber', note: 'HQ reads files into sizes and has a quick estimate. Only as good as the price book.' },
-  { k: 'chase', icon: '🔔', name: 'Follow-up chaser', role: 'Nudges quiet leads and unanswered estimates', real: 'Built 11/12', tone: 'amber', note: 'Writes nudges as Gmail drafts on weekdays. Turns on after one setup step in the Gmail script.' },
+  { k: 'chase', icon: '🔔', name: 'Follow-up chaser', role: 'Nudges quiet leads and unanswered estimates', real: 'Live', tone: 'green', note: 'Live 11/13: writes nudges as Gmail drafts each weekday morning. Never sends.' },
   { k: 'disp', icon: '🚚', name: 'Dispatcher', role: 'Drafts supplier orders, lines up installers and delivery', real: 'Not built', tone: 'red', note: 'Orders and scheduling are done by hand today.' },
   { k: 'va', icon: '🧑‍💼', name: 'Human assistant', role: 'A real person. Gets anything the agents are not allowed to answer', real: 'A person', tone: 'grey', note: 'The safety net: complaints, legal/code questions, and anything with no price on file.' },
 ];
