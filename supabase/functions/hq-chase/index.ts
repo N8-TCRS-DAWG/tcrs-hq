@@ -8,6 +8,7 @@
 // Trade shows: {showList:true} → leads captured in HQ Booth mode with an email and no follow-up yet;
 // {show:{cid}} → Claude writes a short personal thank-you, HQ appends their exact booth offer + intake link;
 // the script saves it as a NEW Gmail draft. Offers are never written by Claude.
+// Morning brief: {brief:true, drafts:n} → Claude writes a 60-second brief from HQ data; the script emails it to nathan@ only.
 // Auth: Google identity token, nathan@ only. No shared secret.
 
 const ALLOWED_EMAILS = ["nathan@tcremodelingsupply.com"];
@@ -134,6 +135,43 @@ async function showOne(cid: string) {
   return { to: c.email, subject: "Great meeting you at the Eagan Home Show", body };
 }
 
+// ── Jarvis morning brief (emailed to Nathan himself, weekdays ~7am) ──
+const BRIEFER = `You are Jarvis, the morning brief for Nathan, who runs sales at Twin Cities Remodeling Supply (TCRS). Write a plain-text email body he can read in 60 seconds on his phone.
+Return ONLY JSON {"subject":"short, specific, e.g. 'Brief: 3 replies owed, Thenhaus quote day 9'","body":"plain text"}.
+Body sections, each only if it has content, in this order, short lines, real names and numbers from the data only:
+TODAY'S 3 MOVES — the three actions with the most money or urgency behind them, one line each.
+WAITING ON US — overdue or due-today steps whose move is ours (name: step, days late).
+GONE QUIET — biggest open deals where the customer hasn't answered (name, value, days quiet).
+DRAFTS — how many Gmail drafts are waiting (follow-ups, thank-yous) — "review and send".
+MONEY — open pipeline total, collected this month, any payment waiting for review in HQ.
+No greeting fluff, no sign-off, no advice beyond the data. Never invent a number.`;
+async function brief(drafts: number) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [cs, acts, logs, pays] = await Promise.all([
+    db("customers?select=id,name,stage,est_price,budget,paid,lost,source&lost=is.null"),
+    db("actions?select=customer_id,title,due,waiting_on&done=eq.false"),
+    db(`logs?select=customer_id,at,who,kind&kind=neq.system&at=gte.${new Date(Date.now() - 60 * 864e5).toISOString()}`),
+    db("payments?select=amount,status,paid_date"),
+  ]);
+  const last: Record<string, any> = {};
+  for (const l of logs) if (!last[l.customer_id] || l.at > last[l.customer_id].at) last[l.customer_id] = l;
+  const days = (iso: string) => Math.round((Date.parse(today) - Date.parse(iso.slice(0, 10))) / 864e5);
+  const open = cs.filter((c: any) => ["new", "intake", "estimate", "design", "quote", "accepted"].includes(c.stage));
+  const val = (c: any) => Math.max(Number(c.est_price) || Number(c.budget) || 0, Number(c.paid?.amount) || 0);
+  const rows = open.map((c: any) => {
+    const a = acts.filter((x: any) => x.customer_id === c.id);
+    const l = last[c.id];
+    return `${c.name} | ${c.stage} | value $${Math.round(val(c))} | last contact ${l ? days(l.at) + "d ago by " + (l.who || "?") : "none in 60d"} | steps: ${a.map((x: any) => `${x.title} (${x.waiting_on}${x.due ? ", due " + x.due + (x.due < today ? " LATE " + days(x.due) + "d" : "") : ""})`).join("; ") || "none"}`;
+  }).join("\n");
+  const month = today.slice(0, 7);
+  const collected = cs.filter((c: any) => String(c.paid?.at || "").startsWith(month)).reduce((s: number, c: any) => s + (Number(c.paid?.amount) || 0), 0);
+  const review = pays.filter((p: any) => p.status === "review").length;
+  const pipeline = open.reduce((s: number, c: any) => s + val(c), 0);
+  const j = await claude(BRIEFER, `Today: ${today}\nGmail drafts waiting: ${drafts}\nOpen pipeline: $${Math.round(pipeline)} across ${open.length} leads\nCollected this month (paid dates in HQ): $${Math.round(collected)}\nPayments waiting for review in HQ: ${review}\n\nOpen leads (name | stage | value | last contact | open steps):\n${rows}`, 1200);
+  const body = (j?.body ? String(j.body) : `Open pipeline $${Math.round(pipeline)} across ${open.length} leads. Drafts waiting: ${drafts}.`) + `\n\nOpen HQ: https://n8-tcrs-dawg.github.io/tcrs-hq/  (press J for Jarvis)`;
+  return { subject: String(j?.subject || `TCRS brief ${today}`).slice(0, 120), body };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
   let body: any;
@@ -148,6 +186,7 @@ Deno.serve(async (req) => {
     if (body.chase) return json(await chaseOne(String(body.chase.cid || ""), body.chase.thread || {}));
     if (body.showList) return json(await showList());
     if (body.show) return json(await showOne(String(body.show.cid || "")));
+    if (body.brief) return json(await brief(Number(body.drafts) || 0));
     if (body.summary) {
       const row = (await db("settings?id=eq.sweep"))[0] || { data: {} };
       const runs = [{ at: new Date().toISOString(), box: "nathan", ...body.summary }, ...(row.data.chaseRuns || [])].slice(0, 30);

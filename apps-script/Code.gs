@@ -18,6 +18,8 @@
  * Finds leads where WE sent the last email 3+ days ago, asks HQ (Claude) for a short nudge and
  * saves it as a Gmail DRAFT in that thread. Never sends. Max 2 nudges per lead (HQ settings).
  * Setup: run installChase once. Run chaseNow to try it immediately.
+ *
+ * PART 4 — Jarvis morning brief (weekdays ~7am): a 60-second email to yourself only. Test: run morningBrief.
  */
 var HQ_INGEST_URL = 'https://sgucoasieddiorebvlrx.supabase.co/functions/v1/hq-ingest';
 var QUERY = 'from:quickbooks@notification.intuit.com subject:"Payment received"';
@@ -198,12 +200,27 @@ function uploadFiles_(cid, want, msgs, subject, token, stats) {
 function installChase() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (['chase', 'showFollowups'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('showFollowups').timeBased().atHour(19).nearMinute(0).everyDays(1).create();
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'morningBrief') ScriptApp.deleteTrigger(t); });
+  [ScriptApp.WeekDay.MONDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.WEDNESDAY, ScriptApp.WeekDay.THURSDAY, ScriptApp.WeekDay.FRIDAY].forEach(function (d) {
+    ScriptApp.newTrigger('morningBrief').timeBased().onWeekDay(d).atHour(7).nearMinute(0).create();
+  });
   [ScriptApp.WeekDay.MONDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.WEDNESDAY, ScriptApp.WeekDay.THURSDAY, ScriptApp.WeekDay.FRIDAY].forEach(function (d) {
     ScriptApp.newTrigger('chase').timeBased().onWeekDay(d).atHour(8).nearMinute(30).create();
   });
 }
 /** Run by hand to try it now (trade-show thank-yous + quiet-lead nudges). */
 function chaseNow() { showFollowups(); chase(); }
+
+/** Jarvis morning brief: emailed to YOU only (this account), weekdays ~7am. Run by hand to test. */
+function morningBrief() {
+  var token = ScriptApp.getIdentityToken();
+  var drafts = 0; try { drafts = GmailApp.getDrafts().length; } catch (e) {}
+  var r = UrlFetchApp.fetch(HQ_CHASE_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ idToken: token, brief: true, drafts: drafts }) });
+  var out = {}; try { out = JSON.parse(r.getContentText()); } catch (e) {}
+  if (!out.body) { Logger.log('HQ: ' + r.getContentText().slice(0, 300)); return; }
+  var me = Session.getEffectiveUser().getEmail();
+  GmailApp.sendEmail(me, out.subject, out.body, { name: 'Jarvis (TCRS HQ)' });
+}
 
 /** Trade-show leads captured in HQ Booth mode → one personal thank-you draft each (never sent). */
 function showFollowups() {
