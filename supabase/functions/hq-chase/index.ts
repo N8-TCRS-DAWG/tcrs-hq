@@ -5,6 +5,9 @@
 //  3. {chase:{cid,thread}} → Claude writes one short nudge; the script saves it as a Gmail DRAFT.
 // Nothing is ever sent from here. Settings: settings row "sweep" → data.chase {off, days (3), max (2)}.
 // A customer's data.noChase = true stops nudges for them.
+// Trade shows: {showList:true} → leads captured in HQ Booth mode with an email and no follow-up yet;
+// {show:{cid}} → Claude writes a short personal thank-you, HQ appends their exact booth offer + intake link;
+// the script saves it as a NEW Gmail draft. Offers are never written by Claude.
 // Auth: Google identity token, nathan@ only. No shared secret.
 
 const ALLOWED_EMAILS = ["nathan@tcremodelingsupply.com"];
@@ -97,6 +100,40 @@ async function chaseOne(cid: string, th: any) {
   return { body, n };
 }
 
+// ── Trade-show follow-ups ──
+const INTAKE = "https://n8-tcrs-dawg.github.io/tcrs-hq/start/";
+const OFFER_TEXT: Record<string, string> = {
+  code: "Your show code 2026EAGAN takes 10% off your total project.",
+  "100": "Your booth prize: $100 off your project.",
+  "500": "Your booth prize: $500 off a project of $2,500 or more.",
+  "1000": "Your booth prize: $1,000 off a project of $5,000 or more.",
+  delivery: "Your booth prize: free delivery (within 50 miles).",
+  hood: "Your booth prize: a free custom range hood with your project.",
+};
+const SHOW_WRITER = `You write the body of a short thank-you email from Nathan at Twin Cities Remodeling Supply (TCRS: cabinets, countertops, flooring, appliances; delivery + install; Minnesota) to someone he met at a home show booth.
+Return ONLY JSON {"body":"Hi <first name>,\\n\\n<2-3 short sentences>"}.
+Rules: 40-80 words. Warm, plain, specific: mention what they're interested in and one detail from the notes if there is one. Then ask them to take the next step: fill out a 2-minute project form or reply with photos and rough measurements, so we can put together a rough estimate. Do NOT mention any discount, prize, code, price, date or promise — the offer and link are added after your text. No signature.`;
+async function showList() {
+  const rows = await db(`customers?select=id,name,email,data&lost=is.null&email=not.is.null&data->booth->>show=not.is.null`);
+  return { list: rows.filter((c: any) => c.email && !c.data?.booth?.followed).map((c: any) => ({ cid: c.id, name: c.name, email: String(c.email).toLowerCase().trim() })) };
+}
+async function showOne(cid: string) {
+  const c = (await db(`customers?select=id,name,email,products,ctype,city,tldr,data&id=eq.${encodeURIComponent(cid)}`))[0];
+  const b = c?.data?.booth;
+  if (!c || !b || b.followed || !c.email) return { skip: true, why: "not a pending booth lead" };
+  const j = await claude(SHOW_WRITER, `Name: ${c.name}\nWho: ${c.ctype || "Homeowner"}${c.city ? ", " + c.city : ""}\nInterested in: ${(c.products || []).join(", ") || "not said"}\nTimeline: ${b.when || "not said"}\nNotes: ${b.notes || "none"}`, 500);
+  const first = String(c.name || "").trim().split(/\s+/)[0] || "there";
+  const intro = j?.body ? String(j.body).trim().slice(0, 900) : `Hi ${first},\n\nThanks for stopping by the TCRS booth at the Eagan home show. When you're ready, the quickest next step is our 2-minute project form, or just reply with a few photos and rough measurements and we'll put together a rough estimate.`;
+  const offer = OFFER_TEXT[b.offer] || "";
+  const fine = b.offer && b.offer !== "code" ? " One offer per project; booth prizes can't be combined with 2026EAGAN." : "";
+  const co = ((await db("settings?select=data&id=eq.main"))[0]?.data || {}).company || {};
+  const body = `${intro}\n\n${offer ? offer + fine + "\n\n" : ""}Project form (2 minutes): ${INTAKE}\n\nBest,\nNathan Abzug\n${co.phone || "(612) 807-0414"}\n${co.email || "nathan@tcremodelingsupply.com"}\n${co.web || "tcremodelingsupply.com"}`;
+  const now = new Date().toISOString();
+  await patch("customers", c.id, { data: { ...c.data, booth: { ...b, followed: now } } });
+  await post("logs", { customer_id: c.id, kind: "system", at: now, who: "us", summary: "✉️ Post-show follow-up saved as a Gmail draft — review and send" });
+  return { to: c.email, subject: "Great meeting you at the Eagan Home Show", body };
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Use POST" }, 405);
   let body: any;
@@ -109,6 +146,8 @@ Deno.serve(async (req) => {
   try {
     if (body.chaseList) return json(await chaseList());
     if (body.chase) return json(await chaseOne(String(body.chase.cid || ""), body.chase.thread || {}));
+    if (body.showList) return json(await showList());
+    if (body.show) return json(await showOne(String(body.show.cid || "")));
     if (body.summary) {
       const row = (await db("settings?id=eq.sweep"))[0] || { data: {} };
       const runs = [{ at: new Date().toISOString(), box: "nathan", ...body.summary }, ...(row.data.chaseRuns || [])].slice(0, 30);

@@ -194,15 +194,35 @@ function uploadFiles_(cid, want, msgs, subject, token, stats) {
 
 
 /* ───────────────────────── PART 3: follow-up chaser ───────────────────────── */
-/** Run once by hand: follow-up drafts every weekday around 8:30am Central. */
+/** Run once by hand: follow-up drafts every weekday ~8:30am + trade-show thank-you drafts every evening ~7pm. */
 function installChase() {
-  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'chase') ScriptApp.deleteTrigger(t); });
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (['chase', 'showFollowups'].indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('showFollowups').timeBased().atHour(19).nearMinute(0).everyDays(1).create();
   [ScriptApp.WeekDay.MONDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.WEDNESDAY, ScriptApp.WeekDay.THURSDAY, ScriptApp.WeekDay.FRIDAY].forEach(function (d) {
     ScriptApp.newTrigger('chase').timeBased().onWeekDay(d).atHour(8).nearMinute(30).create();
   });
 }
-/** Run by hand to try it now. */
-function chaseNow() { chase(); }
+/** Run by hand to try it now (trade-show thank-yous + quiet-lead nudges). */
+function chaseNow() { showFollowups(); chase(); }
+
+/** Trade-show leads captured in HQ Booth mode → one personal thank-you draft each (never sent). */
+function showFollowups() {
+  var token = ScriptApp.getIdentityToken();
+  var call = function (payload) {
+    payload.idToken = token;
+    var r = UrlFetchApp.fetch(HQ_CHASE_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(payload) });
+    try { return JSON.parse(r.getContentText()); } catch (e) { return { error: r.getContentText().slice(0, 300) }; }
+  };
+  var out = call({ showList: true });
+  if (!out.list) { Logger.log('HQ: ' + JSON.stringify(out)); return; }
+  var made = [];
+  out.list.forEach(function (c) {
+    var res = call({ show: { cid: c.cid } });
+    if (res.body && res.to) { GmailApp.createDraft(res.to, res.subject, res.body); made.push(c.name); }
+    else Logger.log('Skipped ' + c.name + ': ' + (res.why || res.error || ''));
+  });
+  Logger.log('Show follow-up drafts: ' + made.length + (made.length ? ' (' + made.join(', ') + ')' : ''));
+}
 
 function chase() {
   var token = ScriptApp.getIdentityToken();
