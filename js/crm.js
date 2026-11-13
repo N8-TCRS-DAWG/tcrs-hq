@@ -1,6 +1,6 @@
 // CRM: every customer and partner, kept current by Drop and the 9am/9pm inbox sweep.
-import { S, STAGES, esc, $, $$, status, stageIdx, fmtDate, money0, STATUS_TEXT, isPrePaid } from './core.js?v=20261112181032';
-import { value, received } from './board.js?v=20261112181032';
+import { S, STAGES, esc, $, $$, status, stageIdx, fmtDate, money0, STATUS_TEXT, isPrePaid } from './core.js?v=20261112181223';
+import { value, received } from './board.js?v=20261112181223';
 
 const C = { q: '', f: 'open', sort: 'last', dir: -1 };
 const COURT = { us: 'Our court', customer: "Customer's court", supplier: "Supplier's court", contractor: "Contractor's court" };

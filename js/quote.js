@@ -1,10 +1,10 @@
 // Estimate → Quote: one growing document. COST = TCRS pays. PRICE = customer pays.
-import * as D from './data.js?v=20261112181032';
+import * as D from './data.js?v=20261112181223';
 import {
   S, PRODUCTS, esc, $, $$, n, r2, money, money0, settings, lineCalc, optionCalc, quoteCalc, custQuote, custSizes, custLayouts,
   todayISO, addDays, fmtDateLong, toast, canWrite, logEvent, patchCustomer, learnedContext, stageIdx, custFiles, estRange,
-} from './core.js?v=20261112181032';
-import { modal, moveStage } from './customer.js?v=20261112181032';
+} from './core.js?v=20261112181223';
+import { modal, moveStage } from './customer.js?v=20261112181223';
 
 const KINDS = [['material', 'Material'], ['delivery', 'Delivery'], ['install', 'Installation'], ['fee', 'Fee'], ['discount', 'Discount']];
 const SEC_NOTE = {
@@ -57,7 +57,7 @@ export function renderQuote(el, c) {
     el.innerHTML = `<div class="empty"><h3>No estimate yet</h3><p>Start one here. It grows into the final quote: ranges and options first, line items once the design deposit is paid and sizes are verified.</p>
       ${canWrite() ? '<div class="row" style="justify-content:center"><button class="btn primary" type="button" id="qQuick">⚡ Quick estimate from a few sizes</button><button class="btn" type="button" id="qStart">Start a detailed estimate</button></div>' : ''}</div>`;
     $('#qStart', el)?.addEventListener('click', async () => { await ensureQuote(c); renderQuote(el, c); });
-    $('#qQuick', el)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261112181032'); openQuick(c); });
+    $('#qQuick', el)?.addEventListener('click', async () => { const { openQuick } = await import('./quick.js?v=20261112181223'); openQuick(c); });
     return;
   }
   const qq = live && live.q.id === q.id && dirty ? live.q : structuredClone(q);
