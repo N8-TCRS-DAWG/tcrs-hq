@@ -13,6 +13,11 @@
  * For a brand-new lead's first email, HQ returns the first reply (intake questions):
  * it is saved as a Gmail draft, or sent, depending on HQ → Prices & partners → Settings.
  * Setup: run installAll once (or sweepFirstRun to also catch up on the last 14 days).
+ *
+ * PART 3 — Follow-up chaser (weekdays ~8:30am)
+ * Finds leads where WE sent the last email 3+ days ago, asks HQ (Claude) for a short nudge and
+ * saves it as a Gmail DRAFT in that thread. Never sends. Max 2 nudges per lead (HQ settings).
+ * Setup: run installChase once. Run chaseNow to try it immediately.
  */
 var HQ_INGEST_URL = 'https://sgucoasieddiorebvlrx.supabase.co/functions/v1/hq-ingest';
 var QUERY = 'from:quickbooks@notification.intuit.com subject:"Payment received"';
@@ -59,6 +64,7 @@ function syncPayments_(window) {
 
 /* ───────────────────────── PART 2: inbox sweep ───────────────────────── */
 var HQ_SWEEP_URL = 'https://sgucoasieddiorebvlrx.supabase.co/functions/v1/hq-sweep';
+var HQ_CHASE_URL = 'https://sgucoasieddiorebvlrx.supabase.co/functions/v1/hq-chase';
 var SWEEP_QUERY = '-in:spam -in:trash -in:drafts -in:chats -category:promotions -category:social -category:forums ' +
   '-from:quickbooks@notification.intuit.com -from:(noreply OR no-reply OR donotreply OR do-not-reply OR mailer-daemon OR notifications)';
 
@@ -70,6 +76,7 @@ function installAll() {
   });
   ScriptApp.newTrigger('sweep').timeBased().atHour(9).nearMinute(0).everyDays(1).create();
   ScriptApp.newTrigger('sweep').timeBased().atHour(21).nearMinute(0).everyDays(1).create();
+  installChase();
 }
 
 /** service@ only: inbox sweep at 9am and 9pm, no QuickBooks payments. */
@@ -183,4 +190,55 @@ function uploadFiles_(cid, want, msgs, subject, token, stats) {
       else if (r.getResponseCode() >= 300) Logger.log('File error: ' + r.getContentText());
     });
   }
+}
+
+
+/* ───────────────────────── PART 3: follow-up chaser ───────────────────────── */
+/** Run once by hand: follow-up drafts every weekday around 8:30am Central. */
+function installChase() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'chase') ScriptApp.deleteTrigger(t); });
+  [ScriptApp.WeekDay.MONDAY, ScriptApp.WeekDay.TUESDAY, ScriptApp.WeekDay.WEDNESDAY, ScriptApp.WeekDay.THURSDAY, ScriptApp.WeekDay.FRIDAY].forEach(function (d) {
+    ScriptApp.newTrigger('chase').timeBased().onWeekDay(d).atHour(8).nearMinute(30).create();
+  });
+}
+/** Run by hand to try it now. */
+function chaseNow() { chase(); }
+
+function chase() {
+  var token = ScriptApp.getIdentityToken();
+  var call = function (payload) {
+    payload.idToken = token;
+    var r = UrlFetchApp.fetch(HQ_CHASE_URL, { method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(payload) });
+    try { return JSON.parse(r.getContentText()); } catch (e) { return { error: r.getContentText().slice(0, 300) }; }
+  };
+  var out = call({ chaseList: true });
+  if (!out.list) { Logger.log('HQ: ' + JSON.stringify(out)); return; }
+  var stats = { kind: 'chase', candidates: out.list.length, drafts: 0, skipped: 0, notQuiet: 0, noThread: 0, hasDraft: 0, errors: 0, names: [] };
+  var drafted = {};
+  GmailApp.getDrafts().forEach(function (d) { try { drafted[d.getMessage().getThread().getId()] = true; } catch (e) {} });
+  var started = Date.now();
+  out.list.forEach(function (c) {
+    if (Date.now() - started > 4.5 * 60 * 1000) { stats.partial = true; return; }
+    var ths = GmailApp.search('(to:' + c.email + ' OR from:' + c.email + ') -in:trash -in:spam', 0, 1);
+    if (!ths.length) { stats.noThread++; return; }
+    var th = ths[0];
+    if (drafted[th.getId()]) { stats.hasDraft++; return; }
+    var msgs = th.getMessages().filter(function (m) { return !m.isDraft(); });
+    if (!msgs.length) { stats.noThread++; return; }
+    var last = msgs[msgs.length - 1];
+    var fromUs = /@tcremodelingsupply\.com/i.test(last.getFrom());
+    var ageDays = (Date.now() - last.getDate().getTime()) / 86400000;
+    if (!fromUs || ageDays < out.days) { stats.notQuiet++; return; }
+    var theirs = msgs.filter(function (m) { return m.getFrom().toLowerCase().indexOf(c.email) >= 0; });
+    var res = call({ chase: { cid: c.cid, thread: { id: th.getId(), subject: th.getFirstMessageSubject(), messages: msgs.slice(-6).map(function (m) {
+      return { from: m.getFrom(), to: m.getTo(), date: m.getDate().toISOString(), body: m.getPlainBody().slice(0, 6000) };
+    }) } } });
+    if (res.error) { stats.errors++; Logger.log('HQ error for ' + c.name + ': ' + res.error); return; }
+    if (!res.body) { stats.skipped++; Logger.log('Skipped ' + c.name + ': ' + (res.why || '')); return; }
+    if (theirs.length) theirs[theirs.length - 1].createDraftReply(res.body);          // threaded reply to the customer
+    else GmailApp.createDraft(c.email, 'Re: ' + th.getFirstMessageSubject(), res.body);
+    stats.drafts++; stats.names.push(c.name);
+  });
+  Logger.log(JSON.stringify(stats));
+  call({ summary: stats });
 }

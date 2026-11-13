@@ -1,8 +1,8 @@
 // Board (kanban) and Race (glance / office TV).
-import * as D from './data.js?v=20261111163514';
-import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast, settings, personName } from './core.js?v=20261111163514';
-import { moveStage } from './customer.js?v=20261111163514';
-import { openDrop } from './drop.js?v=20261111163514';
+import * as D from './data.js?v=20261112181032';
+import { isPrePaid, S, STAGES, esc, $, $$, status, score, stageIdx, openActions, keyDates, revisionInfo, fmtDate, todayISO, daysBetween, money0, custQuote, quoteCalc, STATUS_TEXT, canWrite, referralLines, toast, settings, personName } from './core.js?v=20261112181032';
+import { moveStage } from './customer.js?v=20261112181032';
+import { openDrop } from './drop.js?v=20261112181032';
 
 const F = { st: null, q: '', lost: false };
 // Only "Show lost" is remembered. Search and bubble filters reset on each visit so the board always opens full.

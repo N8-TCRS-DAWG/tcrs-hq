@@ -1,7 +1,7 @@
 // Chat updates: type or speak plain English ("Bri approved the quote, install the 18th") and the right
 // customer files update. Claude proposes the changes; one tap applies them; Undo puts everything back.
-import * as D from './data.js?v=20261111163514';
-import { S, STAGES, esc, $, todayISO, openActions, toast, canWrite } from './core.js?v=20261111163514';
+import * as D from './data.js?v=20261112181032';
+import { S, STAGES, esc, $, todayISO, openActions, toast, canWrite } from './core.js?v=20261112181032';
 
 const FIELDS = ['name', 'phone', 'email', 'address', 'city', 'zip', 'source', 'ctype', 'budget', 'timeline', 'finishes', 'measure_date', 'delivery_date', 'install_date', 'est_price'];
 const SYSTEM = `You update TCRS (Twin Cities Remodeling Supply) customer files from a salesperson's quick note (typed or dictated, may be messy).

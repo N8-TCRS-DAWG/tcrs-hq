@@ -1,15 +1,16 @@
 // Boot, login, top bar, routing, live refresh.
-import * as D from './data.js?v=20261111163514';
-import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261111163514';
-import { wireChat } from './chat.js?v=20261111163514';
-import { renderCRM } from './crm.js?v=20261111163514';
-import { renderBoard, renderRace, renderTV } from './board.js?v=20261111163514';
-import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261111163514';
-import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261111163514';
-import { renderHelp, renderBrain } from './help.js?v=20261111163514';
-import { renderAgents } from './agents.js?v=20261111163514';
+import * as D from './data.js?v=20261112181032';
+import { S, $, esc, toast, todayISO, addDays } from './core.js?v=20261112181032';
+import { wireChat } from './chat.js?v=20261112181032';
+import { renderCRM } from './crm.js?v=20261112181032';
+import { renderBoard, renderRace, renderTV } from './board.js?v=20261112181032';
+import { openCustomer, refreshCustomer, closeCustomer, currentCustomerId } from './customer.js?v=20261112181032';
+import { openDrop, dropOpen, addToDrop } from './drop.js?v=20261112181032';
+import { renderHelp, renderBrain } from './help.js?v=20261112181032';
+import { renderMoney } from './money.js?v=20261112181032';
+import { renderAgents } from './agents.js?v=20261112181032';
 
-import { BUILD } from './version.js?v=20261111163514';
+import { BUILD } from './version.js?v=20261112181032';
 const app = $('#app');
 
 /* Updates: if a newer HQ is published, reload (TV) or offer a one-click reload. */
@@ -39,7 +40,7 @@ window.addEventListener('error', (e) => {
   b.querySelector('button').onclick = () => location.reload();
   document.body.appendChild(b);
 });
-const VIEWS = { board: 'Board', race: 'Race', crm: 'CRM', agents: 'AI team', help: 'Help & SOPs', brain: 'Prices & partners' };
+const VIEWS = { board: 'Board', race: 'Race', crm: 'CRM', agents: 'AI team', money: 'Money', help: 'Help & SOPs', brain: 'Prices & partners' };
 
 const AUTH_LINK = (/type=(invite|recovery|signup|magiclink)/.exec(location.hash) || [])[1] || null;
 const AUTH_ERR = /error_description=([^&]+)/.exec(location.hash)?.[1];
@@ -116,7 +117,7 @@ function route() {
 }
 
 function shell(active) {
-  const flow = ['board', 'race', 'crm', 'agents', 'help', 'brain'].map((k) =>
+  const flow = ['board', 'race', 'crm', 'agents', ...(S.role === 'admin' ? ['money'] : []), 'help', 'brain'].map((k) =>
     `<a href="#${k}" class="${active === k ? 'on' : ''}">${VIEWS[k]}</a>`).join('');
   const me = S.profiles.find((p) => p.id === S.me?.id);
   return `
@@ -144,6 +145,7 @@ function renderView() {
   else if (k === 'tv') renderTV(v);
   else if (k === 'crm') renderCRM(v);
   else if (k === 'agents') renderAgents(v);
+  else if (k === 'money') renderMoney(v);
   else if (k === 'help') renderHelp(v);
   else if (k === 'brain') renderBrain(v);
 }
