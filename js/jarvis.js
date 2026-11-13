@@ -1,9 +1,9 @@
 // Jarvis: walk up, say "brief me", see the business as a live constellation.
 // Admin → key numbers + the moves that matter. Sales → your day.
 // The map is drawn from HQ data (never invented) and updates live; Claude only narrates and picks what to highlight.
-import * as D from './data.js?v=20261113003207';
-import { S, esc, money0, status, isPrePaid, openActions, todayISO, daysBetween } from './core.js?v=20261113003207';
-import { value, received } from './board.js?v=20261113003207';
+import * as D from './data.js?v=20261113033626';
+import { S, esc, money0, status, isPrePaid, openActions, todayISO, daysBetween } from './core.js?v=20261113033626';
+import { value, received } from './board.js?v=20261113033626';
 
 const D3 = 'https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js';
 const HUBS = [

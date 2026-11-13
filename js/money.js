@@ -2,9 +2,9 @@
 // Revenue = what customers have paid (QuickBooks payment emails + manual entries).
 // Costs = per-job cost typed here, else the cost side of the job's HQ quote. Unknown costs are shown as unknown, never guessed.
 // Channel spend = what has been spent on each lead channel so far (typed here, admin only).
-import * as D from './data.js?v=20261113003207';
-import { S, esc, $, $$, n, money0, fmtDate, isPrePaid, custQuote, quoteCalc, toast, settings } from './core.js?v=20261113003207';
-import { received, value } from './board.js?v=20261113003207';
+import * as D from './data.js?v=20261113033626';
+import { S, esc, $, $$, n, money0, fmtDate, isPrePaid, custQuote, quoteCalc, toast, settings } from './core.js?v=20261113033626';
+import { received, value } from './board.js?v=20261113033626';
 
 /* Lead source (free text) → channel. Order matters: first match wins. */
 const CHANNELS = [
